@@ -146,13 +146,27 @@ internal class EngineService : IEngineService, IDisposable
         }
     }
 
-    private Task ReportInstallAsync(string model, double percent) => _clientCommunication.PostAsync(new InstallProgressResponse
+    /// <remarks>
+    /// A step the server does not hear is not worth the install: with the connection down - the server being deployed -
+    /// the post failed and took an 18 GB download with it. The next step, or the end, tells the server again.
+    /// </remarks>
+    private async Task ReportInstallAsync(string model, double percent)
     {
-        Instance = _instanceService.AgentInstanceKey,
-        Percent = percent,
-        Model = model,
-        Queued = _installs.Pending.Where(x => !string.Equals(x, model, StringComparison.OrdinalIgnoreCase)).ToArray()
-    });
+        try
+        {
+            await _clientCommunication.PostAsync(new InstallProgressResponse
+            {
+                Instance = _instanceService.AgentInstanceKey,
+                Percent = percent,
+                Model = model,
+                Queued = _installs.Pending.Where(x => !string.Equals(x, model, StringComparison.OrdinalIgnoreCase)).ToArray()
+            });
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _logger.LogDebug(e, "The server did not hear the install of '{model}' is at {percent}%; it goes on.", model, percent);
+        }
+    }
 
     /// <summary>The install has ended, however it ended: the server clears its progress and hears the models as they are.</summary>
     private async Task ReportInstallEndedAsync(string model)
