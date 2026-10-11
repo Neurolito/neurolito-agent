@@ -18,6 +18,8 @@ internal static class ModelReport
                 ParameterSize = installed.Details.ParameterSize,
                 ParameterCount = info?.Info?.ParameterCount,
                 ActiveParameterCount = ActiveParameters(info?.Info),
+                Architecture = string.IsNullOrEmpty(info?.Info?.Architecture) ? null : info.Info.Architecture,
+                Quantization = string.IsNullOrEmpty(installed.Details?.QuantizationLevel) ? null : installed.Details.QuantizationLevel,
                 SizeBytes = installed.Size > 0 ? installed.Size : null,
                 LoadedSizeBytes = running?.Size > 0 ? running.Size : null,
                 LoadedVramBytes = running == null ? null : running.SizeVram

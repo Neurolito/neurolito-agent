@@ -8,6 +8,19 @@ namespace Tharga.Neurolito.Agent.Tests;
 /// <summary>The llama-server engine's pure parts: reading a GGUF header, naming, the request it sends, the model store.</summary>
 public class LlamaServerEngineTests
 {
+    [Theory]
+    [InlineData("Qwen3-1.7B-Q4_K_M.gguf", "Q4_K_M")]
+    [InlineData("Qwen_Qwen3-1.7B-Q8_0.gguf", "Q8_0")]
+    [InlineData("gemma-3-4b-it-IQ4_XS.gguf", "IQ4_XS")]
+    [InlineData("Qwen3-1.7B-UD-Q4_K_XL.gguf", "UD-Q4_K_XL")]
+    [InlineData("model-f16.gguf", "F16")]
+    [InlineData("Qwen3-1.7B.gguf", null)]
+    [InlineData(null, null)]
+    public void TheQuantisationIsReadFromTheFileName(string fileName, string expected)
+    {
+        Assert.Equal(expected, ModelStore.QuantizationOf(fileName));
+    }
+
     [Fact]
     public void TheHeaderGivesTheParameterCountTheContextAndWhetherTheModelThinks()
     {
