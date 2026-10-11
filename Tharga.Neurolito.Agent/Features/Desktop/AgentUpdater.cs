@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Tharga.Neurolito.Agent.Features.Engine;
 using Velopack;
 using Velopack.Sources;
 
@@ -20,6 +21,9 @@ public record UpdateOptions
 
     /// <summary>The longest to wait for a running job to finish before updating anyway, in minutes.</summary>
     public int DrainMinutes { get; set; } = 120;
+
+    /// <summary>The longest to wait for model installs to finish before updating anyway, in minutes: a large model is a long download.</summary>
+    public int InstallWaitMinutes { get; set; } = 360;
 }
 
 /// <summary>
@@ -27,8 +31,8 @@ public record UpdateOptions
 /// </summary>
 /// <remarks>
 /// The service updates itself, without a privileged helper: its account may write its own install folder. When a new
-/// version is out it downloads it, tells the server the machine is in use so no new job arrives, lets the running job
-/// finish, hands the update to Velopack's Update.exe and exits with an error code. Windows' restart-on-failure then
+/// version is out it downloads it, tells the server the machine is in use so no new job arrives, lets the running job and
+/// any model install finish, hands the update to Velopack's Update.exe and exits with an error code. Windows' restart-on-failure then
 /// starts the new version - Update.exe has swapped the files by then.
 /// </remarks>
 internal sealed class AgentUpdater : BackgroundService
@@ -39,13 +43,15 @@ internal sealed class AgentUpdater : BackgroundService
     private readonly UpdateOptions _options;
     private readonly IPresenceMonitor _presence;
     private readonly IAgentActivity _activity;
+    private readonly IInstallQueue _installs;
     private readonly ILogger<AgentUpdater> _logger;
 
-    public AgentUpdater(IOptions<UpdateOptions> options, IPresenceMonitor presence, IAgentActivity activity, ILogger<AgentUpdater> logger)
+    public AgentUpdater(IOptions<UpdateOptions> options, IPresenceMonitor presence, IAgentActivity activity, ILogger<AgentUpdater> logger, IInstallQueue installs = null)
     {
         _options = options.Value;
         _presence = presence;
         _activity = activity;
+        _installs = installs;
         _logger = logger;
     }
 
@@ -101,17 +107,26 @@ internal sealed class AgentUpdater : BackgroundService
         }
     }
 
-    /// <summary>No new job, and the running one finished - or the drain time is up.</summary>
+    /// <summary>
+    /// No new job, the running one finished and no model installing - or the time for each is up. An install started
+    /// while waiting is waited for too: the server may still ask for one.
+    /// </summary>
     private async Task DrainAsync(string reason, CancellationToken cancellationToken)
     {
         _presence.Hold(reason);
-        var deadline = DateTime.UtcNow.AddMinutes(_options.DrainMinutes);
-        while (_activity.Running > 0 && DateTime.UtcNow < deadline)
+        var started = DateTime.UtcNow;
+        var jobsUntil = started.AddMinutes(_options.DrainMinutes);
+        var installsUntil = started.AddMinutes(_options.InstallWaitMinutes);
+        bool JobRunning() => _activity.Running > 0 && DateTime.UtcNow < jobsUntil;
+        bool Installing() => _installs?.Busy == true && DateTime.UtcNow < installsUntil;
+
+        while (JobRunning() || Installing())
         {
             await Task.Delay(DrainPoll, cancellationToken);
         }
 
         if (_activity.Running > 0) _logger.LogWarning("A job is still running after {Minutes} minutes; updating anyway.", _options.DrainMinutes);
+        if (_installs?.Busy == true) _logger.LogWarning("Models are still installing after {Minutes} minutes ({Models}); updating anyway.", _options.InstallWaitMinutes, string.Join(", ", _installs.Pending));
 
         //NOTE: Time for the server to hear the machine is in use before the connection drops.
         await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);

@@ -44,13 +44,15 @@ internal class EngineService : IEngineService, IDisposable
     private readonly IAgentActivity _activity;
     private readonly ILoadedModelsReporter _loadedModels;
     private readonly Desktop.IQueueSummaryStore _queueSummary;
+    private readonly IInstallQueue _installs;
 
     private readonly CancellationTokenSource _cancellationTokenSource;
 
-    public EngineService(IEngine engine, IClientCommunication clientCommunication, IMetricsService metricsService, IInstanceService instanceService, IEventService eventService, ILogger<EngineService> logger, IAgentActivity activity = null, ILoadedModelsReporter loadedModels = null, Desktop.IQueueSummaryStore queueSummary = null)
+    public EngineService(IEngine engine, IClientCommunication clientCommunication, IMetricsService metricsService, IInstanceService instanceService, IEventService eventService, ILogger<EngineService> logger, IAgentActivity activity = null, ILoadedModelsReporter loadedModels = null, Desktop.IQueueSummaryStore queueSummary = null, IInstallQueue installs = null)
     {
         _activity = activity;
         _queueSummary = queueSummary;
+        _installs = installs ?? new InstallQueue();
         _loadedModels = loadedModels;
         _engine = engine;
         _clientCommunication = clientCommunication;
@@ -105,33 +107,72 @@ internal class EngineService : IEngineService, IDisposable
         return matches[Random.Shared.Next(matches.Length)];
     }
 
+    /// <remarks>
+    /// One install at a time, in the order asked (<see cref="IInstallQueue"/>); a model already queued or installing is
+    /// not asked for twice. The server hears each step with the model's name and what waits after it, and 100 when the
+    /// install ends - installed, failed or cancelled - followed by the models as they now are.
+    /// </remarks>
     public async IAsyncEnumerable<double> InstallModelAsync(string model, ModelSource source, bool respondToServer, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Start to install model '{model}'.", model);
-
-        await foreach (var percent in _engine.InstallAsync(model, source, cancellationToken))
+        using var ticket = _installs.Enter(model, cancellationToken);
+        if (ticket == null)
         {
-            yield return percent;
-            if (respondToServer)
-            {
-                await _clientCommunication.PostAsync(new InstallProgressResponse
-                {
-                    Instance = _instanceService.AgentInstanceKey,
-                    Percent = percent
-                });
-            }
+            _logger.LogInformation("Model '{model}' is already queued or installing; not queued again.", model);
+            yield break;
         }
 
-        if (respondToServer)
+        var completed = false;
+        try
         {
+            //NOTE: A model that waits is shown in the queue of the one installing, which reports with every step.
+            if (_installs.Pending.Count > 1) _logger.LogInformation("Model '{model}' waits for {count} install(s) ahead of it.", model, _installs.Pending.Count - 1);
+            await ticket.WaitForTurnAsync();
+            if (respondToServer) await ReportInstallAsync(model, 0);
+
+            _logger.LogInformation("Start to install model '{model}'.", model);
+            await foreach (var percent in _engine.InstallAsync(model, source, ticket.Token))
+            {
+                yield return percent;
+                if (respondToServer && percent < 100) await ReportInstallAsync(model, percent);
+            }
+
+            completed = true;
+            _logger.LogInformation("Completed installation of model '{model}'.", model);
+        }
+        finally
+        {
+            if (!completed) _logger.LogWarning("The install of model '{model}' ended before it completed.", model);
+            if (respondToServer) await ReportInstallEndedAsync(model);
+        }
+    }
+
+    private Task ReportInstallAsync(string model, double percent) => _clientCommunication.PostAsync(new InstallProgressResponse
+    {
+        Instance = _instanceService.AgentInstanceKey,
+        Percent = percent,
+        Model = model,
+        Queued = _installs.Pending.Where(x => !string.Equals(x, model, StringComparison.OrdinalIgnoreCase)).ToArray()
+    });
+
+    /// <summary>The install has ended, however it ended: the server clears its progress and hears the models as they are.</summary>
+    private async Task ReportInstallEndedAsync(string model)
+    {
+        try
+        {
+            await ReportInstallAsync(model, 100);
             await _clientCommunication.PostAsync(await BuildCapabilityAsync());
         }
-
-        _logger.LogInformation("Completed installation of model '{model}'.", model);
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Could not tell the server the install of '{model}' has ended.", model);
+        }
     }
 
     public async Task UninstallModelAsync(string model, bool respondToServer, CancellationToken cancellationToken)
     {
+        //NOTE: A model asked to go while it waits or downloads stops there; what it had downloaded is thrown away.
+        if (_installs.Cancel(model)) _logger.LogInformation("Cancelled the install of model '{model}', which is to be uninstalled.", model);
+
         _logger.LogInformation("Start to uninstall model '{model}'.", model);
 
         await _engine.UninstallAsync(model, cancellationToken);
