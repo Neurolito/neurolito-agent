@@ -69,31 +69,7 @@ internal class OllamaService : IOllamaService, IDisposable
             var modelRunning = modelsRunning.FirstOrDefault(x => x.Name == modelInstalled.Name);
             var modelInfo = await GetModelAsync(modelInstalled.Name);
 
-            //modelRunning.SizeVram
-            //modelRunning.ExpiresAt
-            //modelRunning.ContextLength
-
-            //modelInfo.License
-            //modelInfo.Modelfile
-            //modelInfo.Parameters
-            //modelInfo.Template
-            //modelInfo.System
-            //modelInfo.Details
-            //modelInfo.Info
-            //modelInfo.Projector
-            //modelInfo.Capabilities
-            //var supportsThinking = modelInfo.Capabilities?.Any(c => string.Equals(c, "thinking", StringComparison.OrdinalIgnoreCase)) == true;
-
-            var result = new LLModel
-            {
-                Name = modelInstalled.Name,
-                Loaded = modelRunning != null,
-                Details = new ModelDetails
-                {
-                    ParameterSize = modelInstalled.Details.ParameterSize,
-                    ParameterCount = modelInfo.Info.ParameterCount,
-                }
-            };
+            var result = Features.Model.ModelReport.Build(modelInstalled, modelRunning, modelInfo);
 
             yield return result;
         }
