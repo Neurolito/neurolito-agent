@@ -1,16 +1,17 @@
 ﻿using Tharga.Communication.MessageHandler;
 using Tharga.Neurolito.Agent.Features.Chat;
+using Tharga.Neurolito.Agent.Features.Engine;
 using Tharga.Neurolito.Client.Contract;
 
 namespace Tharga.Neurolito.Agent.Features.Ollama;
 
 internal class PromptRequestHandler : SendMessageHandlerBase<PromptRequest, AgentPromptResponse>
 {
-    private readonly IOllamaService _ollamaService;
+    private readonly IEngineService _engineService;
 
-    public PromptRequestHandler(IOllamaService ollamaService)
+    public PromptRequestHandler(IEngineService engineService)
     {
-        _ollamaService = ollamaService;
+        _engineService = engineService;
     }
 
     public override async Task<AgentPromptResponse> Handle(PromptRequest message)
@@ -26,6 +27,6 @@ internal class PromptRequestHandler : SendMessageHandlerBase<PromptRequest, Agen
             TimeoutMinutes = message.TimeoutMinutes
         };
 
-        return await _ollamaService.GetResponseAsync(request, true, CancellationToken.None);
+        return await _engineService.GetResponseAsync(request, true, CancellationToken.None);
     }
 }

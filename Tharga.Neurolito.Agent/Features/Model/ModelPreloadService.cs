@@ -1,12 +1,12 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Options;
 using Tharga.Communication.Client;
-using Tharga.Neurolito.Agent.Features.Ollama;
+using Tharga.Neurolito.Agent.Features.Engine;
 
 namespace Tharga.Neurolito.Agent.Features.Model;
 
 /// <summary>
-/// Installs the models named in <c>Ollama:Models</c> when the agent starts, so a fresh agent — a new
+/// Installs the models named in <c>Ollama:Models</c> (<c>LlamaServer:Models</c> for llama-server) when the agent starts, so a fresh agent — a new
 /// container, a reimaged machine — can take work without someone installing a model by hand first.
 /// </summary>
 /// <remarks>
@@ -16,15 +16,15 @@ namespace Tharga.Neurolito.Agent.Features.Model;
 internal class ModelPreloadService : BackgroundService
 {
     private static readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan _ollamaTimeout = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan _engineTimeout = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan _connectionTimeout = TimeSpan.FromMinutes(2);
 
     private readonly IServiceProvider _serviceProvider;
     private readonly ISignalRHostedService _signalR;
-    private readonly OllamaOptions _options;
+    private readonly ModelPreloadOptions _options;
     private readonly ILogger<ModelPreloadService> _logger;
 
-    public ModelPreloadService(IServiceProvider serviceProvider, ISignalRHostedService signalR, IOptions<OllamaOptions> options, ILogger<ModelPreloadService> logger)
+    public ModelPreloadService(IServiceProvider serviceProvider, ISignalRHostedService signalR, IOptions<ModelPreloadOptions> options, ILogger<ModelPreloadService> logger)
     {
         _serviceProvider = serviceProvider;
         _signalR = signalR;
@@ -45,11 +45,11 @@ internal class ModelPreloadService : BackgroundService
         _logger.LogInformation("Model preload configured for {count} model(s): {models}.", wanted.Length, string.Join(", ", wanted));
 
         using var scope = _serviceProvider.CreateScope();
-        var modelService = scope.ServiceProvider.GetRequiredService<IOllamaModelService>();
+        var modelService = scope.ServiceProvider.GetRequiredService<IEngineService>();
 
-        if (!await WaitForOllamaAsync(modelService, stoppingToken))
+        if (!await WaitForEngineAsync(modelService, stoppingToken))
         {
-            _logger.LogError("Model preload abandoned — Ollama did not become reachable within {timeout}.", _ollamaTimeout);
+            _logger.LogError("Model preload abandoned — the engine did not become reachable within {timeout}.", _engineTimeout);
             return;
         }
 
@@ -70,7 +70,7 @@ internal class ModelPreloadService : BackgroundService
                 }
 
                 _logger.LogInformation("Installing model '{model}'...", model);
-                await foreach (var _ in modelService.InstallModelAsync(model, true, stoppingToken)) { }
+                await foreach (var _ in modelService.InstallModelAsync(model, null, true, stoppingToken)) { }
                 _logger.LogInformation("Model '{model}' installed.", model);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -85,9 +85,9 @@ internal class ModelPreloadService : BackgroundService
         }
     }
 
-    private async Task<bool> WaitForOllamaAsync(IOllamaModelService modelService, CancellationToken cancellationToken)
+    private async Task<bool> WaitForEngineAsync(IEngineService modelService, CancellationToken cancellationToken)
     {
-        var deadline = DateTime.UtcNow + _ollamaTimeout;
+        var deadline = DateTime.UtcNow + _engineTimeout;
         while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
         {
             try
@@ -122,7 +122,7 @@ internal class ModelPreloadService : BackgroundService
         _logger.LogWarning("Preloading without a live server connection — state is {state}.", _signalR.State);
     }
 
-    private static async Task<bool> IsInstalledAsync(IOllamaModelService modelService, string model, CancellationToken cancellationToken)
+    private static async Task<bool> IsInstalledAsync(IEngineService modelService, string model, CancellationToken cancellationToken)
     {
         var installed = await modelService.GetModelsAsync(cancellationToken).ToArrayAsync(cancellationToken);
         return installed.Any(x => IsSameModel(x?.Name, model));
@@ -140,4 +140,10 @@ internal class ModelPreloadService : BackgroundService
             ? value[..^":latest".Length]
             : value;
     }
+}
+
+/// <summary>The models <see cref="ModelPreloadService"/> installs at startup.</summary>
+public record ModelPreloadOptions
+{
+    public string[] Models { get; init; } = [];
 }

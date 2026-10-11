@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Tharga.Communication.Client;
+using Tharga.Neurolito.Agent.Features.Engine;
 using Tharga.Neurolito.Agent.Features.Ollama;
 
 namespace Tharga.Neurolito.Agent.Controllers;
@@ -9,12 +10,12 @@ namespace Tharga.Neurolito.Agent.Controllers;
 public class StatusController : ControllerBase
 {
     private readonly ISignalRHostedService _signalRConnectionState;
-    private readonly IOllamaService _ollamaService;
+    private readonly IEngineService _engineService;
 
-    public StatusController(ISignalRHostedService signalRConnectionState, IOllamaService ollamaService)
+    public StatusController(ISignalRHostedService signalRConnectionState, IEngineService engineService)
     {
         _signalRConnectionState = signalRConnectionState;
-        _ollamaService = ollamaService;
+        _engineService = engineService;
     }
 
     [HttpGet]
@@ -27,7 +28,7 @@ public class StatusController : ControllerBase
     [HttpGet("capability")]
     public async Task<IActionResult> GetMetrics(CancellationToken cancellationToken)
     {
-        var response = await _ollamaService.BuildCapabilityAsync();
+        var response = await _engineService.BuildCapabilityAsync();
         return Ok(response);
     }
 

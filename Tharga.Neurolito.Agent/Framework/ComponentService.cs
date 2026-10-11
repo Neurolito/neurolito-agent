@@ -2,18 +2,21 @@
 using Quilt4Net.Toolkit;
 using Quilt4Net.Toolkit.Features.Health;
 using Tharga.Communication.Client;
-using Tharga.Neurolito.Agent.Features.Ollama;
+using Tharga.Neurolito.Agent.Features.Engine;
+using Tharga.Neurolito.Client.Contract;
 
 namespace Tharga.Neurolito.Agent.Framework;
 
 internal class ComponentService : IComponentService
 {
-    private readonly IOllamaService _ollamaService;
+    private readonly IEngineService _engineService;
+    private readonly IEngine _engine;
     private readonly ISignalRHostedService _signalRConnectionState;
 
-    public ComponentService(IOllamaService ollamaService, ISignalRHostedService signalRConnectionState)
+    public ComponentService(IEngineService engineService, IEngine engine, ISignalRHostedService signalRConnectionState)
     {
-        _ollamaService = ollamaService;
+        _engineService = engineService;
+        _engine = engine;
         _signalRConnectionState = signalRConnectionState;
     }
 
@@ -21,17 +24,18 @@ internal class ComponentService : IComponentService
     {
         yield return new Component
         {
-            Name = "Ollama",
+            //NOTE: "Ollama" for an Ollama agent, as the component has always been called, so its health history continues.
+            Name = _engine.Kind == EngineKind.Ollama ? "Ollama" : _engine.Kind,
             Essential = true,
             CheckAsync = async _ =>
             {
                 try
                 {
-                    var response = await _ollamaService.GetVersionAsync();
+                    var response = await _engineService.GetVersionAsync();
                     return new CheckResult
                     {
                         Success = true,
-                        Message = $"Ollama with version {response} available."
+                        Message = $"{response} available."
                     };
                 }
                 catch (Exception e)

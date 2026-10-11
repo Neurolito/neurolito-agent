@@ -8,9 +8,15 @@ using Quilt4Net.Toolkit.Health;
 using Serilog;
 using Tharga.Communication.Client;
 using Tharga.Neurolito.Agent.Features.ConsoleLog;
+using Tharga.Neurolito.Agent.Features.Desktop;
 using Tharga.Neurolito.Agent.Features.Greeting;
-using Tharga.Neurolito.Agent.Features.Ollama;
+using Tharga.Neurolito.Agent.Features.Engine;
 using Tharga.Neurolito.Agent.Framework;
+using Velopack;
+
+//NOTE: First, before anything else: when Velopack's Update.exe starts the agent to finish an install or an update, it
+//does what it must and exits here. Otherwise it returns at once.
+VelopackApp.Build().Run();
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +26,15 @@ var builder = WebApplication.CreateBuilder(args);
 //change a log level is a secret that ends up in a paste. Optional, because a developer running the
 //agent from the repository has no such file, and an agent installed by an older package has none either.
 builder.Configuration.AddJsonFile("appsettings.Agent.json", optional: true, reloadOnChange: true);
+
+//NOTE: The Windows installer's settings: everything but the team key in the registry, and the team key in a file in a
+//folder only the service and administrators can read (Windows Installer applies a key's permissions only when it
+//creates the key, and a registry key with values cannot be created that way). Last, so they win over appsettings.json.
+if (OperatingSystem.IsWindows())
+{
+    ((IConfigurationBuilder)builder.Configuration).Add(new RegistryConfigurationSource(RegistryConfigurationSource.AgentKey));
+    builder.Configuration.AddIniFile(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Neurolito", "settings", "agent.ini"), optional: true, reloadOnChange: false);
+}
 
 builder.Logging.ClearProviders();
 
@@ -39,7 +54,8 @@ if (!string.IsNullOrWhiteSpace(aiConnectionString))
     builder.Services.AddApplicationInsightsTelemetry(new ApplicationInsightsServiceOptions { ConnectionString = aiConnectionString });
 }
 
-builder.AddOllama();
+builder.AddEngine();
+builder.AddDesktop();
 
 builder.AddQuilt4NetHealth(o =>
 {
@@ -71,6 +87,7 @@ builder.Services.AddHostedService<GreetingService>();
 try
 {
     builder.Host.UseWindowsService();
+    builder.UseDesktopLifetime();
 
     var app = builder.Build();
 

@@ -63,6 +63,13 @@ public record Gpu
 public record Engine
 {
     public required string Name { get; init; }
+
+    /// <summary>
+    /// Which engine runs the models: <see cref="EngineKind.Ollama"/> or <see cref="EngineKind.LlamaServer"/>. Null from
+    /// older agents, which are all Ollama.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string Kind { get; init; }
     public required LLModel[] Models { get; set; }
 
     /// <summary>
@@ -79,4 +86,11 @@ public record Engine
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? AnthropicContextLength { get; init; }
+}
+
+/// <summary>The values of <see cref="Engine.Kind"/>.</summary>
+public static class EngineKind
+{
+    public const string Ollama = "ollama";
+    public const string LlamaServer = "llama-server";
 }

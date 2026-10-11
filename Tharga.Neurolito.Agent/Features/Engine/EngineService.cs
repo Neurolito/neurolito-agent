@@ -1,44 +1,61 @@
-﻿using Microsoft.Extensions.Options;
-using OllamaSharp;
-using OllamaSharp.Models;
-using OllamaSharp.Models.Chat;
-using Quilt4Net.Toolkit.Features.Health.Metrics;
-using Quilt4Net.Toolkit.Features.Measure;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Quilt4Net.Toolkit.Features.Health.Metrics;
+using Quilt4Net.Toolkit.Features.Measure;
 using Tharga.Communication.Client;
 using Tharga.Communication.Client.Communication;
 using Tharga.Neurolito.Agent.Features.Chat;
+using Tharga.Neurolito.Agent.Features.Desktop;
+using Tharga.Neurolito.Agent.Features.Ollama;
 using Tharga.Neurolito.Client.Contract;
-using Message = OllamaSharp.Models.Chat.Message;
 
-namespace Tharga.Neurolito.Agent.Features.Ollama;
+namespace Tharga.Neurolito.Agent.Features.Engine;
 
-internal class OllamaService : IOllamaService, IDisposable
+/// <summary>
+/// What the agent does with its engine: answers prompts, installs and removes models, and tells the server what it has.
+/// The same for every engine; what differs between them is behind <see cref="IEngine"/>.
+/// </summary>
+public interface IEngineService
 {
+    /// <summary>The engine and its version, for example "Ollama 0.40.1". Throws when the engine cannot be reached.</summary>
+    Task<string> GetVersionAsync(CancellationToken cancellationToken = default);
+
+    IAsyncEnumerable<LLModel> GetModelsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Installs a model, yielding the percent done. <paramref name="source"/> is where to download it from, for an engine that needs one.</summary>
+    IAsyncEnumerable<double> InstallModelAsync(string model, ModelSource source, bool respondToServer, CancellationToken cancellationToken);
+
+    Task UninstallModelAsync(string model, bool respondToServer, CancellationToken cancellationToken);
+
+    Task<AgentPromptResponse> GetResponseAsync(RequestDto request, bool respondToServer, CancellationToken cancellationToken);
+
+    Task<CapabilityResponse> BuildCapabilityAsync();
+}
+
+internal class EngineService : IEngineService, IDisposable
+{
+    private readonly IEngine _engine;
     private readonly IClientCommunication _clientCommunication;
     private readonly IMetricsService _metricsService;
     private readonly IInstanceService _instanceService;
     private readonly IEventService _eventService;
-    private readonly OllamaOptions _options;
-    private readonly ILogger<OllamaService> _logger;
-    private readonly IHttpClientFactory _httpClientFactory;
-
-    /// <summary>The named HttpClient with no timeout, for calls that last as long as a generation or a download.</summary>
-    public const string LongRunningClient = "OllamaLongRunning";
+    private readonly ILogger<EngineService> _logger;
+    private readonly IAgentActivity _activity;
+    private readonly ILoadedModelsReporter _loadedModels;
 
     private readonly CancellationTokenSource _cancellationTokenSource;
 
-    public OllamaService(IClientCommunication clientCommunication, IMetricsService metricsService, IInstanceService instanceService, IEventService eventService, IOptions<OllamaOptions> options, ILogger<OllamaService> logger, IHttpClientFactory httpClientFactory)
+    public EngineService(IEngine engine, IClientCommunication clientCommunication, IMetricsService metricsService, IInstanceService instanceService, IEventService eventService, ILogger<EngineService> logger, IAgentActivity activity = null, ILoadedModelsReporter loadedModels = null)
     {
+        _activity = activity;
+        _loadedModels = loadedModels;
+        _engine = engine;
         _clientCommunication = clientCommunication;
         _metricsService = metricsService;
         _instanceService = instanceService;
         _eventService = eventService;
-        _options = options.Value;
         _logger = logger;
-        _httpClientFactory = httpClientFactory;
 
         _cancellationTokenSource = new CancellationTokenSource();
 
@@ -52,38 +69,20 @@ internal class OllamaService : IOllamaService, IDisposable
 
     public async Task<string> GetVersionAsync(CancellationToken cancellationToken)
     {
-        using var client = new OllamaApiClient(_options.Address);
-        var version = await client.GetVersionAsync(cancellationToken);
-        return version;
+        return await _engine.GetNameAsync(cancellationToken) ?? throw new InvalidOperationException($"The {_engine.Kind} engine cannot be reached.");
     }
 
     public async IAsyncEnumerable<LLModel> GetModelsAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        using var client = new OllamaApiClient(_options.Address);
-
-        //NOTE: The larger-context copies made for Anthropic requests are an implementation detail, never a model
-        //to offer or to resolve a name to.
-        var modelsInstalled = (await client.ListLocalModelsAsync(cancellationToken)).Where(x => !ContextVariant.IsVariant(x.Name));
-        var modelsRunning = (await client.ListRunningModelsAsync(cancellationToken)).ToArray();
-
-        foreach (var modelInstalled in modelsInstalled)
+        foreach (var model in await _engine.GetModelsAsync(cancellationToken))
         {
-            var modelRunning = modelsRunning.FirstOrDefault(x => x.Name == modelInstalled.Name);
-            var modelInfo = await GetModelAsync(modelInstalled.Name);
-
-            var result = Features.Model.ModelReport.Build(modelInstalled, modelRunning, modelInfo);
-
-            yield return result;
+            yield return model;
         }
     }
 
     private async Task<string> ResolveModelNameAsync(string model, CancellationToken cancellationToken = default)
     {
-        using var client = new OllamaApiClient(_options.Address);
-        var installed = (await client.ListLocalModelsAsync(cancellationToken))
-            .Where(m => !ContextVariant.IsVariant(m.Name))
-            .Select(m => m.Name)
-            .ToArray();
+        var installed = await _engine.GetModelNamesAsync(cancellationToken);
 
         if (installed.Length == 0)
             throw new InvalidOperationException("No models are installed.");
@@ -104,36 +103,20 @@ internal class OllamaService : IOllamaService, IDisposable
         return matches[Random.Shared.Next(matches.Length)];
     }
 
-    private async Task<ShowModelResponse> GetModelAsync(string model)
-    {
-        using var client = new OllamaApiClient(_options.Address);
-        var response = await client.ShowModelAsync(new ShowModelRequest { Model = model });
-        return response;
-    }
-
-    public async IAsyncEnumerable<PullModelResponse> InstallModelAsync(string model, bool  respondToServer, [EnumeratorCancellation] CancellationToken cancellationToken)
+    public async IAsyncEnumerable<double> InstallModelAsync(string model, ModelSource source, bool respondToServer, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         _logger.LogInformation("Start to install model '{model}'.", model);
 
-        var request = new PullModelRequest
+        await foreach (var percent in _engine.InstallAsync(model, source, cancellationToken))
         {
-            Model = model
-        };
-
-        using var client = LongRunning();
-        await foreach (var progress in client.PullModelAsync(request, cancellationToken))
-        {
-            yield return progress;
-            if (progress != null)
+            yield return percent;
+            if (respondToServer)
             {
-                if (respondToServer)
+                await _clientCommunication.PostAsync(new InstallProgressResponse
                 {
-                    await _clientCommunication.PostAsync(new InstallProgressResponse
-                    {
-                        Instance = _instanceService.AgentInstanceKey,
-                        Percent = progress.Percent
-                    });
-                }
+                    Instance = _instanceService.AgentInstanceKey,
+                    Percent = percent
+                });
             }
         }
 
@@ -149,13 +132,7 @@ internal class OllamaService : IOllamaService, IDisposable
     {
         _logger.LogInformation("Start to uninstall model '{model}'.", model);
 
-        var request = new DeleteModelRequest
-        {
-            Model = model
-        };
-
-        using var client = LongRunning();
-        await client.DeleteModelAsync(request, cancellationToken);
+        await _engine.UninstallAsync(model, cancellationToken);
 
         if (respondToServer)
         {
@@ -172,10 +149,13 @@ internal class OllamaService : IOllamaService, IDisposable
         TimeSpan elapsedTotal = default;
         var model = request.Model;
         var tags = request.Tags;
+        var started = false;
+        var output = new StringBuilder();
+        var sw = new Stopwatch();
 
         try
         {
-            _logger.LogInformation("OllamaService instance id: {id}", GetHashCode());
+            _logger.LogInformation("EngineService instance id: {id}", GetHashCode());
 
             if (respondToServer)
             {
@@ -191,7 +171,6 @@ internal class OllamaService : IOllamaService, IDisposable
                 });
             }
 
-
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
             var ct = linkedCts.Token;
 
@@ -199,57 +178,49 @@ internal class OllamaService : IOllamaService, IDisposable
 
             _logger.LogInformation("Request for model '{model}'.", model);
 
-            var m = await GetModelAsync(model);
-            var modelParameterCount = m.Info.ParameterCount;
-            var supportsThinking = m.Capabilities?.Any(c => string.Equals(c, "thinking", StringComparison.OrdinalIgnoreCase)) == true;
+            var info = await _engine.GetModelInfoAsync(model, ct);
+            var modelParameterCount = info.ParameterCount;
 
-            var messages = request.Messages.Select(x => new Message
-            {
-                Role = new ChatRole($"{x.Role}".ToLower()),
-                Content = x.Content
-            }).ToArray();
-
-            var options = new RequestOptions
-            {
-                Temperature = request.Options?.Temperature, // ?? 0.1f,
-                TopP = request.Options?.TopP, // ?? 0.9f,
-                TopK = request.Options?.TopK, // ?? 40,
-                RepeatPenalty = request.Options?.RepeatPenalty, // ?? 1.05f,
-                NumPredict = request.Options?.NumPredict, // ?? 24,
-                NumCtx = request.Options?.NumCtx, // ?? 4096,
-                Stop = request.Options?.Stop,
-            };
-
-            var chatRequest = new ChatRequest
+            var chatRequest = new EngineChatRequest
             {
                 Model = model,
-                Messages = messages,
-                Options = options,
-                Stream = true,
-                Think = supportsThinking ? true : null,
-                KeepAlive = request.TimeoutMinutes.HasValue ? $"{request.TimeoutMinutes}m" : null
+                Messages = request.Messages,
+                Options = request.Options,
+                Think = info.SupportsThinking,
+                KeepAliveMinutes = request.TimeoutMinutes
             };
 
-            using var ollamaClient = LongRunning();
-            var output = new StringBuilder();
-            ChatDoneResponseStream final = null;
+            EngineUsage final = null;
 
-            var sw = new Stopwatch();
             sw.Start();
 
-            await foreach (var chunk in ollamaClient.ChatAsync(chatRequest, ct))
-            {
-                if (chunk is null) continue;
+            //NOTE: The shape of the job for the screensaver: its model and how many words, never the words.
+            _activity?.JobStarted(model, request.Messages.Sum(x => AgentActivity.WordsIn(x.Content)));
+            started = true;
 
-                if (chunk.Message.Thinking is { Length: > 0 } thought)
+            var first = true;
+            await foreach (var chunk in _engine.ChatAsync(chatRequest, ct))
+            {
+                //NOTE: The first chunk means the model is loaded; the server hears it now rather than at the next check.
+                if (first)
                 {
-                    _logger.LogDebug("Thinking: {thought}", thought);
+                    first = false;
+                    _loadedModels?.Poke();
                 }
 
-                if (chunk.Message.Content is { Length: > 0 } part)
+                if (chunk.Thinking is { Length: > 0 } thought)
+                {
+                    _logger.LogDebug("Thinking: {thought}", thought);
+
+                    //NOTE: Thinking is work too, and the screen shows the work; it counts, as answer tokens do.
+                    _activity?.Tokens(1);
+                }
+
+                if (chunk.Content is { Length: > 0 } part)
                 {
                     output.Append(part);
                     Console.Write(part);
+                    _activity?.Tokens(1);
 
                     tokens++;
                     wu = CalculateWorkUnits(tokens, modelParameterCount);
@@ -270,42 +241,44 @@ internal class OllamaService : IOllamaService, IDisposable
                     }
                 }
 
-                if (chunk.Done)
+                if (chunk.Final != null)
                 {
-                    final = chunk as ChatDoneResponseStream;
+                    final = chunk.Final;
                     break;
                 }
             }
 
-            if (final is null) throw new InvalidOperationException("Stream ended without a final 'done' message from Ollama.");
+            if (final is null) throw new InvalidOperationException($"Stream ended without a final message from the {_engine.Kind} engine.");
 
             var tokensPerSecond = 0m;
-            if (final.EvalDuration > 0 && final.EvalCount > 0)
+            if (final.OutputDurationMs > 0 && final.OutputTokens > 0)
             {
-                tokensPerSecond = final.EvalCount / (final.EvalDuration / 1_000_000_000m);
+                tokensPerSecond = final.OutputTokens / (final.OutputDurationMs / 1000m);
             }
 
-            var loadDurationMs = final.LoadDuration / 1_000_000m;
-            var inputDurationMs = final.PromptEvalDuration / 1_000_000m;
-            var outputDurationMs = final.EvalDuration / 1_000_000m;
+            var loadDurationMs = final.LoadDurationMs;
+            var inputDurationMs = final.InputDurationMs;
+            var outputDurationMs = final.OutputDurationMs;
             var workDurationMs = inputDurationMs + outputDurationMs;
-            var totalDurationMs = final.TotalDuration / 1_000_000m;
+            var totalDurationMs = final.TotalDurationMs;
 
-            var workUnits = CalculateWorkUnits(final.PromptEvalCount + final.EvalCount, modelParameterCount);
-            var throughput = workUnits / workDurationMs * 1000;
+            var workUnits = CalculateWorkUnits(final.InputTokens + final.OutputTokens, modelParameterCount);
+            var throughput = workDurationMs > 0 ? workUnits / workDurationMs * 1000 : null;
 
             _logger.LogInformation("Time: Completed in {elapsed}ms. Load time {loadTime}ms, input time {inputTime}ms, {outputTime}ms", totalDurationMs, loadDurationMs, inputDurationMs, outputDurationMs);
             _logger.LogInformation("WU: Used {workUnits} work units with a throughput of {throughput} work units per second. TokensPerSecond: {tokensPerSecond}.", workUnits, throughput, tokensPerSecond);
-            _logger.LogInformation("Token: Used {tokens}, with {inputTokens} for input and {outputTokens} for output.", final.PromptEvalCount + final.EvalCount, final.PromptEvalCount, final.EvalCount);
+            _logger.LogInformation("Token: Used {tokens}, with {inputTokens} for input and {outputTokens} for output.", final.InputTokens + final.OutputTokens, final.InputTokens, final.OutputTokens);
 
-            var logData = new LogData(new Dictionary<string, object> { { "model", model }, { "machine", Environment.MachineName } });
+            var logData = new LogData(new Dictionary<string, object> { { "model", model }, { "machine", Environment.MachineName }, { "engine", _engine.Kind } });
 
-            _logger.Count($"{nameof(OllamaService)}.{nameof(GetResponseAsync)}.Tokens", final.PromptEvalCount + final.EvalCount, logData: logData);
-            _logger.Count($"{nameof(OllamaService)}.{nameof(GetResponseAsync)}.TokensPerSecond", (int)tokensPerSecond, logData: logData);
-            if (throughput.HasValue) _logger.Count($"{nameof(OllamaService)}.{nameof(GetResponseAsync)}.Throughput", (int)throughput.Value, logData: logData);
-            if (workUnits.HasValue) _logger.Count($"{nameof(OllamaService)}.{nameof(GetResponseAsync)}.WorkUnits", (int)workUnits.Value, logData: logData);
-            _logger.Elapsed($"{nameof(OllamaService)}.{nameof(GetResponseAsync)}.LoadTime", TimeSpan.FromMilliseconds((double)loadDurationMs), logData: logData);
-            _logger.Elapsed($"{nameof(OllamaService)}.{nameof(GetResponseAsync)}.TotalDuration", TimeSpan.FromMilliseconds((double)totalDurationMs), logData: logData);
+            //NOTE: The metric names keep the class the agent had before the engine seam, so the dashboards built on them continue.
+            const string metric = "OllamaService.GetResponseAsync";
+            _logger.Count($"{metric}.Tokens", final.InputTokens + final.OutputTokens, logData: logData);
+            _logger.Count($"{metric}.TokensPerSecond", (int)tokensPerSecond, logData: logData);
+            if (throughput.HasValue) _logger.Count($"{metric}.Throughput", (int)throughput.Value, logData: logData);
+            if (workUnits.HasValue) _logger.Count($"{metric}.WorkUnits", (int)workUnits.Value, logData: logData);
+            _logger.Elapsed($"{metric}.LoadTime", TimeSpan.FromMilliseconds((double)loadDurationMs), logData: logData);
+            _logger.Elapsed($"{metric}.TotalDuration", TimeSpan.FromMilliseconds((double)totalDurationMs), logData: logData);
 
             if (respondToServer)
             {
@@ -314,7 +287,7 @@ internal class OllamaService : IOllamaService, IDisposable
                     Instance = _instanceService.AgentInstanceKey,
                     RequestId = request.RequestId ?? Guid.Empty,
                     Output = null,
-                    Tokens = final.PromptEvalCount + final.EvalCount,
+                    Tokens = final.InputTokens + final.OutputTokens,
                     WorkUnits = workUnits,
                     Throughput = throughput,
                     TotalDurationMs = (decimal)elapsedTotal.TotalMilliseconds
@@ -328,19 +301,19 @@ internal class OllamaService : IOllamaService, IDisposable
                 Tags = tags,
                 Usage = new Usage
                 {
-                    InputTokens = final.PromptEvalCount,
+                    InputTokens = final.InputTokens,
                     InputDurationMs = inputDurationMs,
-                    OutputTokens = final.EvalCount,
+                    OutputTokens = final.OutputTokens,
                     OutputDurationMs = outputDurationMs,
                     LoadDurationMs = loadDurationMs,
                     TotalDurationMs = totalDurationMs,
                     WorkUnits = workUnits,
-                    Throughput = workUnits / workDurationMs * 1000,
+                    Throughput = throughput,
                 },
                 ResponseInstruction = request.ResponseInstruction
             };
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
             return new AgentPromptResponse
             {
@@ -381,9 +354,11 @@ internal class OllamaService : IOllamaService, IDisposable
                 }
             };
         }
+        finally
+        {
+            if (started) _activity?.JobEnded(AgentActivity.WordsIn(output.ToString()), sw.Elapsed.TotalMilliseconds);
+        }
     }
-
-    private OllamaApiClient LongRunning() => new(_httpClientFactory.CreateClient(LongRunningClient));
 
     private static decimal? CalculateWorkUnits(int tokens, long? modelParameterCount)
     {
@@ -440,42 +415,39 @@ internal class OllamaService : IOllamaService, IDisposable
             Gpu = gpu
         };
 
-        var response = new CapabilityResponse
+        return new CapabilityResponse
         {
             Engine = capability,
             Performance = performance
         };
-
-        return response;
     }
 
-    private async Task<Engine> BuildEngine()
+    private async Task<Client.Contract.Engine> BuildEngine()
     {
-        Engine engine;
         try
         {
-            var models = await GetModelsAsync(CancellationToken.None).ToArrayAsync();
-            var version = await GetVersionAsync(CancellationToken.None);
+            var models = await _engine.GetModelsAsync(CancellationToken.None);
+            var name = await _engine.GetNameAsync(CancellationToken.None);
 
-            engine = new Engine
+            return new Client.Contract.Engine
             {
-                Name = version == null ? null : $"Ollama {version}",
-                Models = models.ToArray(),
+                Name = name,
+                Kind = _engine.Kind,
+                Models = models,
                 SupportsSelfTest = true,
-                AnthropicContextLength = _options.AnthropicContextLength > 0 ? _options.AnthropicContextLength : null,
+                AnthropicContextLength = _engine.AnthropicContextLength,
             };
         }
         catch (Exception e)
         {
             _logger?.LogError(e, e.Message);
-            engine = new Engine
+            return new Client.Contract.Engine
             {
                 Models = [],
                 Name = null,
+                Kind = _engine.Kind,
             };
         }
-
-        return engine;
     }
 
     public void Dispose()

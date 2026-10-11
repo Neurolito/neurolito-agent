@@ -74,6 +74,46 @@ listed as a model of its own, and is removed when the model is uninstalled.
 was trained for). `0` turns it off and forwards to the model as installed. The agent reports the setting to
 the server, which shows it on the agent page.
 
+### llama-server instead of Ollama
+`Engine__Kind=LlamaServer` makes the agent drive [llama.cpp](https://github.com/ggml-org/llama.cpp)'s
+`llama-server` itself instead of talking to Ollama. It starts it as a child process, one model at a time, and
+unloads an idle model to give the memory back; on Windows the server ends with the agent. Models keep their Ollama
+names: the server says which Hugging Face file a name stands for, pinned to a commit and its checksum, and the agent
+downloads it. A model can also be named directly as `hf.co/{owner}/{repo}:{quantisation}`.
+
+| Setting | |
+|---|---|
+| `LlamaServer__ExecutablePath` | The `llama-server` program. Default: `llama/llama-server(.exe)` next to the agent. |
+| `LlamaServer__ModelsPath` | Where models are kept. Default: `Neurolito/models` in the machine's application data folder. |
+| `LlamaServer__ContextLength` | The context a prompt gets when it asks for none (default `8192`), capped at what the model was trained for. |
+| `LlamaServer__IdleUnloadMinutes` | Unload a model after this long without a request (default `10`); `0` keeps it loaded. |
+| `LlamaServer__GpuLayers` | Layers on the GPU (default `999`, as many as fit). |
+| `LlamaServer__ExtraArguments` | More arguments for `llama-server`, for example `--flash-attn on`. |
+| `LlamaServer__HuggingFaceToken` | For gated models. Optional. |
+
+### Desktop agent
+`Desktop__Enabled=true` (Windows) makes the agent share a machine with the person using it. The
+[Windows installer](https://github.com/Neurolito/neurolito-agent-windows) turns it on. The machine counts as free
+while a screensaver runs, the console is locked or nobody is logged on; the agent then takes work, and when someone
+returns it finishes the running job and takes no new one. It tells the server, which shows the machine as *In use*,
+*Ready*, *Working* or *Asleep*.
+
+| Setting | |
+|---|---|
+| `Desktop__EnergyMode` | `Never` (default), `WhileWorking` or `WhileReady`: when the agent keeps the machine from sleeping. |
+| `Desktop__ResumeDelaySeconds` | How long the machine must be free before work starts (default `15`). |
+| `Desktop__AlwaysWork` | Take work even while the machine is in use. |
+| `Desktop__PipeName` | The local pipe the screensaver reads (default `neurolito-agent`). It carries the shape of the work, never its text. |
+
+On Windows the agent also reads its settings from `HKLM\SOFTWARE\Neurolito\Agent` (one value per setting, named as
+in configuration, for example `Desktop:EnergyMode`), where the installer writes them.
+
+### Updates
+`Updates__Enabled=true` with `Updates__Source` (a GitHub repository address, a web folder or a local folder) lets an
+agent installed with [Velopack](https://velopack.io) update itself. Every few hours it looks for a new version,
+downloads it, stops taking work, lets the running job finish, applies the update and exits, so that the service
+manager starts it again on the new version. An agent not installed that way never updates itself.
+
 ## Building Chocolatey package
 In the `Tharga.Neurolito.Agent` folder run...
 - `.\Resources\pack-choco.ps1` to build the package

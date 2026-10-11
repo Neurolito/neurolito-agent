@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Tharga.Communication.Contract;
 using Tharga.Neurolito.Agent.Features.Chat;
+using Tharga.Neurolito.Agent.Features.Engine;
 using Tharga.Neurolito.Agent.Features.Ollama;
 using Tharga.Neurolito.Agent.Framework;
 using Tharga.Neurolito.Client.Contract;
@@ -11,11 +12,11 @@ namespace Tharga.Neurolito.Agent.Controllers;
 [Route("api/[controller]")]
 public class PromptController : ControllerBase
 {
-    private readonly IOllamaService _ollamaService;
+    private readonly IEngineService _engineService;
 
-    public PromptController(IOllamaService ollamaService)
+    public PromptController(IEngineService engineService)
     {
-        _ollamaService = ollamaService;
+        _engineService = engineService;
     }
 
     [HttpGet]
@@ -32,7 +33,7 @@ public class PromptController : ControllerBase
             ResponseInstruction = null,
             Tags = null,
         };
-        var response = await _ollamaService.GetResponseAsync(request, false, cancellationToken);
+        var response = await _engineService.GetResponseAsync(request, false, cancellationToken);
         return Ok(response);
     }
 }
