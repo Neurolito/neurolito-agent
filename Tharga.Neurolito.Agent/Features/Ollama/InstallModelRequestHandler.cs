@@ -15,7 +15,18 @@ public class InstallModelRequestHandler : PostMessageHandlerBase<InstallModelReq
         _logger = logger;
     }
 
-    public override async Task Handle(InstallModelRequest message)
+    /// <remarks>
+    /// Started and left to run: an install can take an hour, and while this handler ran the agent answered nothing else
+    /// the server asked - not even for its models after a reconnect, so a download the reconnect had cut short was never
+    /// asked for again. The install queue keeps the installs in order.
+    /// </remarks>
+    public override Task Handle(InstallModelRequest message)
+    {
+        _ = Task.Run(() => InstallAsync(message));
+        return Task.CompletedTask;
+    }
+
+    private async Task InstallAsync(InstallModelRequest message)
     {
         try
         {
