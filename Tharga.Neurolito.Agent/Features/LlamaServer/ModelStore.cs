@@ -20,6 +20,8 @@ internal sealed record InstalledModel
     public long ParameterCount { get; init; }
     public long? ActiveParameterCount { get; init; }
     public string ParameterSize { get; init; }
+    public string Architecture { get; init; }
+    public string Quantization { get; init; }
 
     /// <summary>The context the model was trained for.</summary>
     public long? ContextLength { get; init; }
@@ -101,6 +103,21 @@ internal sealed partial class ModelStore
             return null;
         }
     }
+
+    /// <summary>
+    /// The quantisation a GGUF file's name carries, as publishers write it - <c>Qwen3-1.7B-Q4_K_M.gguf</c> gives
+    /// <c>Q4_K_M</c> - in upper case, as Ollama reports it. Null when the name carries none.
+    /// </summary>
+    internal static string QuantizationOf(string fileName)
+    {
+        if (string.IsNullOrEmpty(fileName)) return null;
+
+        var match = Quantization().Match(Path.GetFileNameWithoutExtension(fileName));
+        return match.Success ? match.Groups["q"].Value.ToUpperInvariant() : null;
+    }
+
+    [GeneratedRegex(@"(?:^|[-_.])(?<q>(?:UD-)?(?:I?Q\d_K(?:_[SML]|_XL)?|IQ\d_[A-Z]+(?:_[A-Z]+)?|Q\d_\d|TQ\d_\d|MXFP4|BF16|F16|F32))(?:$|[-_.])", RegexOptions.IgnoreCase)]
+    private static partial Regex Quantization();
 
     /// <summary>A file name for a model name: <c>qwen3:1.7b</c> becomes <c>qwen3_1.7b</c>.</summary>
     internal static string Stem(string name) => UnsafeCharacters().Replace(Bare(name).ToLowerInvariant(), "_");

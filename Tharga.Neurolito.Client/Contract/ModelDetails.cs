@@ -14,6 +14,18 @@ public record ModelDetails
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public long? ActiveParameterCount { get; init; }
 
+    /// <summary>
+    /// The model's architecture as its GGUF names it, for example <c>qwen3</c> or <c>llama</c>. With
+    /// <see cref="Quantization"/> and <see cref="ParameterCount"/> it tells whether two names are the same model on
+    /// different engines. Null from older agents.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public string Architecture { get; init; }
+
+    /// <summary>How the weights are quantised, for example <c>Q4_K_M</c> or <c>Q8_0</c>. Null from older agents.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public string Quantization { get; init; }
+
     /// <summary>The model's size on disk, in bytes. Null from older agents.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public long? SizeBytes { get; init; }

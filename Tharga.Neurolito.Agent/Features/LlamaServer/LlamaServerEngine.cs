@@ -62,6 +62,8 @@ internal sealed class LlamaServerEngine : IEngine
                     ParameterSize = x.ParameterSize,
                     ParameterCount = x.ParameterCount,
                     ActiveParameterCount = x.ActiveParameterCount,
+                    Architecture = x.Architecture,
+                    Quantization = x.Quantization ?? ModelStore.QuantizationOf(x.Source?.File),
                     SizeBytes = x.SizeBytes,
                     LoadedSizeBytes = isLoaded ? x.SizeBytes : null
                 }
@@ -126,6 +128,8 @@ internal sealed class LlamaServerEngine : IEngine
                 ParameterCount = gguf.ParameterCount,
                 ActiveParameterCount = ModelReport.ActiveParameters(gguf.ParameterCount, gguf.Read),
                 ParameterSize = gguf.SizeLabel ?? SizeLabel(gguf.ParameterCount),
+                Architecture = gguf.Architecture,
+                Quantization = ModelStore.QuantizationOf(source.File),
                 ContextLength = gguf.ContextLength,
                 SupportsThinking = gguf.SupportsThinking
             });

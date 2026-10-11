@@ -37,6 +37,14 @@ internal sealed partial class HuggingFaceClient
     }
 
     /// <summary>The single-file GGUF in <paramref name="repository"/> for <paramref name="quantisation"/>, pinned to the current commit and its digest.</summary>
+    /// <summary>Whether the file's name ends in the quantisation, as a whole part: <c>Model-Q6_K.gguf</c>, not <c>Model-Q6_K_L.gguf</c>.</summary>
+    internal static bool NamedFor(string fileName, string quantisation)
+    {
+        var stem = Path.GetFileNameWithoutExtension(fileName);
+        return stem.EndsWith(quantisation, StringComparison.OrdinalIgnoreCase)
+               && (stem.Length == quantisation.Length || stem[^(quantisation.Length + 1)] is '-' or '_' or '.');
+    }
+
     public async Task<ModelSource> ResolveAsync(string repository, string quantisation, CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -56,6 +64,10 @@ internal sealed partial class HuggingFaceClient
                         && !x.File.Contains("mmproj", StringComparison.OrdinalIgnoreCase)
                         && !SplitPattern().IsMatch(x.File))
             .ToArray();
+        //NOTE: A file named for exactly the quantisation wins over one that only contains it: Q6_K is also part of Q6_K_L,
+        //which bartowski publishes next to it.
+        var exact = candidates.Where(x => NamedFor(x.File, quantisation)).ToArray();
+        if (exact.Length > 0) candidates = exact;
 
         if (candidates.Length == 0) throw new InvalidOperationException($"{repository} has no single-file GGUF for {quantisation}.");
         if (candidates.Length > 1) throw new InvalidOperationException($"{repository} has several GGUF files for {quantisation}: {string.Join(", ", candidates.Select(x => x.File))}.");
