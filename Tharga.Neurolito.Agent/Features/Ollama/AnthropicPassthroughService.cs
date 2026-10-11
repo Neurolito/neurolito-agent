@@ -27,15 +27,17 @@ internal sealed class AnthropicPassthroughService : IAnthropicPassthroughService
     private readonly IInstanceService _instanceService;
     private readonly IEventService _eventService;
     private readonly OllamaOptions _options;
+    private readonly IContextVariantService _contextVariantService;
     private readonly ILogger<AnthropicPassthroughService> _logger;
 
-    public AnthropicPassthroughService(HttpClient httpClient, IClientCommunication clientCommunication, IInstanceService instanceService, IEventService eventService, IOptions<OllamaOptions> options, ILogger<AnthropicPassthroughService> logger)
+    public AnthropicPassthroughService(HttpClient httpClient, IClientCommunication clientCommunication, IInstanceService instanceService, IEventService eventService, IOptions<OllamaOptions> options, IContextVariantService contextVariantService, ILogger<AnthropicPassthroughService> logger)
     {
         _httpClient = httpClient;
         _clientCommunication = clientCommunication;
         _instanceService = instanceService;
         _eventService = eventService;
         _options = options.Value;
+        _contextVariantService = contextVariantService;
         _logger = logger;
     }
 
@@ -52,7 +54,7 @@ internal sealed class AnthropicPassthroughService : IAnthropicPassthroughService
         {
             using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(_options.Address), MessagesPath))
             {
-                Content = new StringContent(Prepare(request), Encoding.UTF8, "application/json")
+                Content = new StringContent(Prepare(request, await _contextVariantService.ResolveAsync(request.Model, cancellation.Token)), Encoding.UTF8, "application/json")
             };
 
             using var response = await _httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellation.Token);
@@ -110,14 +112,18 @@ internal sealed class AnthropicPassthroughService : IAnthropicPassthroughService
     /// tempting - it is what makes a long generation visible - but the chunks are reassembled by the
     /// server, and a caller who asked for a whole response would then receive a concatenated event
     /// stream where it expects one JSON body.
+    /// <para>
+    /// The model written is <paramref name="engineModel"/>: the requested model, or its larger-context variant
+    /// (<see cref="IContextVariantService"/>), because Ollama's own default context would cut the request.
+    /// </para>
     /// </remarks>
-    private static string Prepare(AnthropicPromptRequest request)
+    internal static string Prepare(AnthropicPromptRequest request, string engineModel)
     {
         if (JsonNode.Parse(request.RequestJson) is not JsonObject body) return request.RequestJson;
 
-        if (string.IsNullOrWhiteSpace(request.Model)) return request.RequestJson;
+        if (string.IsNullOrWhiteSpace(engineModel)) return request.RequestJson;
 
-        body[ModelProperty] = request.Model;
+        body[ModelProperty] = engineModel;
 
         return body.ToJsonString();
     }

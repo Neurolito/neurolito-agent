@@ -61,7 +61,9 @@ internal class OllamaService : IOllamaService, IDisposable
     {
         using var client = new OllamaApiClient(_options.Address);
 
-        var modelsInstalled = await client.ListLocalModelsAsync(cancellationToken);
+        //NOTE: The larger-context copies made for Anthropic requests are an implementation detail, never a model
+        //to offer or to resolve a name to.
+        var modelsInstalled = (await client.ListLocalModelsAsync(cancellationToken)).Where(x => !ContextVariant.IsVariant(x.Name));
         var modelsRunning = (await client.ListRunningModelsAsync(cancellationToken)).ToArray();
 
         foreach (var modelInstalled in modelsInstalled)
@@ -79,6 +81,7 @@ internal class OllamaService : IOllamaService, IDisposable
     {
         using var client = new OllamaApiClient(_options.Address);
         var installed = (await client.ListLocalModelsAsync(cancellationToken))
+            .Where(m => !ContextVariant.IsVariant(m.Name))
             .Select(m => m.Name)
             .ToArray();
 
@@ -459,6 +462,7 @@ internal class OllamaService : IOllamaService, IDisposable
                 Name = version == null ? null : $"Ollama {version}",
                 Models = models.ToArray(),
                 SupportsSelfTest = true,
+                AnthropicContextLength = _options.AnthropicContextLength > 0 ? _options.AnthropicContextLength : null,
             };
         }
         catch (Exception e)

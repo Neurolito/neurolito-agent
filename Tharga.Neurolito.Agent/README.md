@@ -63,6 +63,17 @@ starts it; the agent answers on [http://localhost:5101/swagger/](http://localhos
 From the root of the repository run
 `$env:ASPNETCORE_ENVIRONMENT = "Production"; dotnet run --project .\Tharga.Neurolito.Agent\Tharga.Neurolito.Agent.csproj --launch-profile https`
 
+### Context for Anthropic-compatible requests
+Ollama's Anthropic endpoint (`/v1/messages`) takes no context option, and its default keeps only the end
+of a long prompt, so a Claude Code request loses its system prompt and tools. The agent therefore runs
+these requests on a copy of the model with a larger context, named like
+`qwen3-coder-neurolito-ctx32768:30b`. The copy shares the model's files, is created on first use, is never
+listed as a model of its own, and is removed when the model is uninstalled.
+
+`Ollama__AnthropicContextLength` sets the context in tokens (default `32768`, capped per model at what it
+was trained for). `0` turns it off and forwards to the model as installed. The agent reports the setting to
+the server, which shows it on the agent page.
+
 ## Building Chocolatey package
 In the `Tharga.Neurolito.Agent` folder run...
 - `.\Resources\pack-choco.ps1` to build the package
