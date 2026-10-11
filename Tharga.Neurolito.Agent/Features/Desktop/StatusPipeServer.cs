@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
@@ -17,7 +18,7 @@ namespace Tharga.Neurolito.Agent.Features.Desktop;
 /// </summary>
 /// <remarks>
 /// <para>The screensaver says <c>idle</c> when it starts and <c>active</c> when it ends; a dropped connection counts as
-/// <c>active</c>. It is told <c>state</c> (presence, working, machine, engine, model) on connecting and on every
+/// <c>active</c>. It is told <c>state</c> (presence, working, machine, engine, model, version) on connecting and on every
 /// change, and <c>job-start</c> (model, words in), <c>tokens</c> and <c>job-end</c> (words out, duration) as work
 /// happens. Never prompt or answer text.</para>
 /// <para>Local only: authenticated users on this machine may connect, the network may not. Each client has its own
@@ -28,6 +29,9 @@ internal sealed class StatusPipeServer : BackgroundService
 {
     private const int QueueLength = 1000;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    /// <summary>The release this agent is, without the commit it was built from, so the screensaver shows which one runs.</summary>
+    private static readonly string Version = typeof(StatusPipeServer).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0];
 
     private readonly DesktopOptions _options;
     private readonly IPresenceMonitor _presence;
@@ -187,7 +191,8 @@ internal sealed class StatusPipeServer : BackgroundService
         working = _activity.Running > 0,
         machine = Environment.MachineName,
         engine = _engineName,
-        model = _model
+        model = _model,
+        version = Version
     }, Json);
 
     private void Broadcast(string line)
