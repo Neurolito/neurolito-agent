@@ -35,14 +35,22 @@ internal static class ModelReport
     /// </remarks>
     public static long? ActiveParameters(ModelInfo info)
     {
-        var total = info?.ParameterCount;
+        var extra = info?.ExtraInfo;
+        var architecture = info?.Architecture;
+        if (extra == null || string.IsNullOrEmpty(architecture)) return info?.ParameterCount is > 0 ? info.ParameterCount : null;
+
+        return ActiveParameters(info.ParameterCount, key => extra.TryGetValue($"{architecture}.{key}", out var value) ? AsLong(value) : null);
+    }
+
+    /// <summary>
+    /// The same, from any source of the model's metadata: <paramref name="read"/> gives a number for a key without the
+    /// architecture prefix, such as <c>expert_count</c>.
+    /// </summary>
+    public static long? ActiveParameters(long? total, Func<string, long?> read)
+    {
         if (total is not > 0) return null;
 
-        var extra = info.ExtraInfo;
-        var architecture = info.Architecture;
-        if (extra == null || string.IsNullOrEmpty(architecture)) return total;
-
-        long? Read(string key) => extra.TryGetValue($"{architecture}.{key}", out var value) ? AsLong(value) : null;
+        long? Read(string key) => read(key);
 
         var experts = Read("expert_count");
         var used = Read("expert_used_count");

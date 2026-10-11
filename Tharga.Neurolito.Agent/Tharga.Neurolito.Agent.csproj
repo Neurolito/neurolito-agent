@@ -25,6 +25,7 @@
     <PackageReference Include="Quilt4Net.Toolkit.Api" Version="1.0.17" />
     <PackageReference Include="OllamaSharp" Version="5.5.0" />
     <PackageReference Include="Tharga.Communication" Version="1.1.2" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Tharga.Neurolito.Client\Tharga.Neurolito.Client.csproj" />

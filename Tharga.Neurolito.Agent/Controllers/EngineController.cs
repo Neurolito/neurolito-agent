@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using Tharga.Communication.Contract;
+using Tharga.Neurolito.Agent.Features.Engine;
 using Tharga.Neurolito.Agent.Features.Ollama;
 using Tharga.Neurolito.Agent.Framework;
 using Tharga.Neurolito.Client.Contract;
@@ -11,19 +12,19 @@ namespace Tharga.Neurolito.Agent.Controllers;
 [Route("api/[controller]")]
 public class EngineController : ControllerBase
 {
-    private readonly IOllamaService _ollamaService;
+    private readonly IEngineService _engineService;
     private readonly ILogger<EngineController> _logger;
 
-    public EngineController(IOllamaService ollamaService, ILogger<EngineController> logger)
+    public EngineController(IEngineService engineService, ILogger<EngineController> logger)
     {
-        _ollamaService = ollamaService;
+        _engineService = engineService;
         _logger = logger;
     }
 
     [HttpGet("model")]
     public async Task<IActionResult> GetModels(CancellationToken cancellationToken)
     {
-        var models = await _ollamaService.GetModelsAsync(cancellationToken).ToArrayAsync(cancellationToken);
+        var models = await _engineService.GetModelsAsync(cancellationToken).ToArrayAsync(cancellationToken);
         return Ok(new ModelResponse { Models = models });
     }
 
@@ -37,7 +38,7 @@ public class EngineController : ControllerBase
         Response.Headers.Add("Cache-Control", "no-cache");
         Response.Headers.Add("Connection", "keep-alive");
 
-        await foreach (var progress in _ollamaService.InstallModelAsync(model, false, cancellationToken))
+        await foreach (var progress in _engineService.InstallModelAsync(model, null, false, cancellationToken))
         {
             var json = JsonSerializer.Serialize(progress);
 
@@ -53,14 +54,14 @@ public class EngineController : ControllerBase
     {
         if (!string.IsNullOrEmpty(model)) model = Uri.UnescapeDataString(model);
 
-        await _ollamaService.UninstallModelAsync(model, false, cancellationToken);
+        await _engineService.UninstallModelAsync(model, false, cancellationToken);
         return Ok();
     }
 
     [HttpGet("version")]
     public async Task<IActionResult> GetVersion(CancellationToken cancellationToken)
     {
-        var response = await _ollamaService.GetVersionAsync(cancellationToken);
+        var response = await _engineService.GetVersionAsync(cancellationToken);
         return Ok(response);
     }
 }

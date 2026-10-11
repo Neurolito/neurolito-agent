@@ -17,7 +17,7 @@ public class AgentOllamaClientTests
         OllamaRegistration.AddOllama(builder, o => o.Address = "http://ollama.example:11434");
         using var provider = builder.Services.BuildServiceProvider();
 
-        var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(OllamaService.LongRunningClient);
+        var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(OllamaEngine.LongRunningClient);
 
         Assert.Equal(Timeout.InfiniteTimeSpan, client.Timeout);
     }

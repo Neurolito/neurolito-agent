@@ -1,19 +1,20 @@
 ﻿using Tharga.Communication.MessageHandler;
+using Tharga.Neurolito.Agent.Features.Engine;
 using Tharga.Neurolito.Client.Contract;
 
 namespace Tharga.Neurolito.Agent.Features.Ollama;
 
 public class InstallModelRequestHandler : PostMessageHandlerBase<InstallModelRequest>
 {
-    private readonly IOllamaService _ollamaService;
+    private readonly IEngineService _engineService;
 
-    public InstallModelRequestHandler(IOllamaService ollamaService)
+    public InstallModelRequestHandler(IEngineService engineService)
     {
-        _ollamaService = ollamaService;
+        _engineService = engineService;
     }
 
     public override async Task Handle(InstallModelRequest message)
     {
-        await _ollamaService.InstallModelAsync(message.Model, true, CancellationToken.None).ToArrayAsync();
+        await _engineService.InstallModelAsync(message.Model, message.Source, true, CancellationToken.None).ToArrayAsync();
     }
 }

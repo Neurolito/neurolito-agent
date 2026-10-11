@@ -1,18 +1,18 @@
-using Microsoft.Extensions.Options;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Tharga.Communication.Client;
 using Tharga.Communication.Client.Communication;
+using Tharga.Neurolito.Agent.Features.Engine;
 using Tharga.Neurolito.Client.Contract;
 
 namespace Tharga.Neurolito.Agent.Features.Ollama;
 
 /// <summary>
-/// Forwards an Anthropic request to this agent's Ollama and relays the answer as it arrives.
+/// Forwards an Anthropic request to this agent's engine and relays the answer as it arrives.
 /// </summary>
 /// <remarks>
-/// Ollama answers <c>/v1/messages</c> in Anthropic's own shape and streams Anthropic's own event
+/// Ollama and llama-server both answer <c>/v1/messages</c> in Anthropic's own shape and streams Anthropic's own event
 /// sequence, so the body is never parsed in either direction. The one thing written into the request
 /// is the resolved model name, because the published id the caller used means nothing to the engine.
 /// </remarks>
@@ -26,18 +26,16 @@ internal sealed class AnthropicPassthroughService : IAnthropicPassthroughService
     private readonly IClientCommunication _clientCommunication;
     private readonly IInstanceService _instanceService;
     private readonly IEventService _eventService;
-    private readonly OllamaOptions _options;
-    private readonly IContextVariantService _contextVariantService;
+    private readonly IEngine _engine;
     private readonly ILogger<AnthropicPassthroughService> _logger;
 
-    public AnthropicPassthroughService(HttpClient httpClient, IClientCommunication clientCommunication, IInstanceService instanceService, IEventService eventService, IOptions<OllamaOptions> options, IContextVariantService contextVariantService, ILogger<AnthropicPassthroughService> logger)
+    public AnthropicPassthroughService(HttpClient httpClient, IClientCommunication clientCommunication, IInstanceService instanceService, IEventService eventService, IEngine engine, ILogger<AnthropicPassthroughService> logger)
     {
         _httpClient = httpClient;
         _clientCommunication = clientCommunication;
         _instanceService = instanceService;
         _eventService = eventService;
-        _options = options.Value;
-        _contextVariantService = contextVariantService;
+        _engine = engine;
         _logger = logger;
     }
 
@@ -52,9 +50,11 @@ internal sealed class AnthropicPassthroughService : IAnthropicPassthroughService
 
         try
         {
-            using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(_options.Address), MessagesPath))
+            //NOTE: Held until the answer is relayed, so the engine does not swap the model out from under it.
+            await using var target = await _engine.ResolveAnthropicAsync(request.Model, cancellation.Token);
+            using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(target.Address, MessagesPath))
             {
-                Content = new StringContent(Prepare(request, await _contextVariantService.ResolveAsync(request.Model, cancellation.Token)), Encoding.UTF8, "application/json")
+                Content = new StringContent(Prepare(request, target.Model), Encoding.UTF8, "application/json")
             };
 
             using var response = await _httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellation.Token);
@@ -113,8 +113,9 @@ internal sealed class AnthropicPassthroughService : IAnthropicPassthroughService
     /// server, and a caller who asked for a whole response would then receive a concatenated event
     /// stream where it expects one JSON body.
     /// <para>
-    /// The model written is <paramref name="engineModel"/>: the requested model, or its larger-context variant
-    /// (<see cref="IContextVariantService"/>), because Ollama's own default context would cut the request.
+    /// The model written is <paramref name="engineModel"/>, as <see cref="IEngine.ResolveAnthropicAsync"/> gives it: for
+    /// Ollama the requested model or its larger-context variant (<see cref="IContextVariantService"/>), because Ollama's
+    /// own default context would cut the request.
     /// </para>
     /// </remarks>
     internal static string Prepare(AnthropicPromptRequest request, string engineModel)

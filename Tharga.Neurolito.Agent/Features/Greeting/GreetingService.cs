@@ -8,6 +8,20 @@ public class GreetingService : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        //NOTE: A banner. It must never stop the agent: an exception from a background service stops the host, and an
+        //agent installed in Program Files cannot write the cache next to itself.
+        try
+        {
+            await ShowBannerAsync(stoppingToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            ShowVersion(Environment.MachineName);
+        }
+    }
+
+    private static async Task ShowBannerAsync(CancellationToken stoppingToken)
+    {
         var machine = Environment.MachineName;
         var font = "Grafitti";
         var url = $"https://asciified.thelicato.io/api/v2/ascii?text={Uri.EscapeDataString(machine)}&font={Uri.EscapeDataString(font)}";
