@@ -21,6 +21,7 @@ public static class EngineRegistration
             builder.AddOllama();
         }
 
+        builder.Services.AddSingleton<IInstallQueue, InstallQueue>();
         builder.Services.AddTransient<IEngineService, EngineService>();
         builder.Services.AddTransient<IEngineSelfTest, EngineSelfTest>();
 

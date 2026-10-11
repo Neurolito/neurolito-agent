@@ -111,7 +111,8 @@ in configuration, for example `Desktop:EnergyMode`), where the installer writes 
 ### Updates
 `Updates__Enabled=true` with `Updates__Source` (a GitHub repository address, a web folder or a local folder) lets an
 agent installed with [Velopack](https://velopack.io) update itself. Every few hours it looks for a new version,
-downloads it, stops taking work, lets the running job finish, applies the update and exits, so that the service
+downloads it, stops taking work, lets the running job and any model install finish (`Updates__DrainMinutes`, default
+120, and `Updates__InstallWaitMinutes`, default 360, are the longest it waits), applies the update and exits, so that the service
 manager starts it again on the new version. An agent not installed that way never updates itself.
 
 ## Building Chocolatey package
