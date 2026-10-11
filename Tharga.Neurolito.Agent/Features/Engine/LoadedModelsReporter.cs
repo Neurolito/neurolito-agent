@@ -10,6 +10,12 @@ public interface ILoadedModelsReporter
 {
     /// <summary>Look now rather than at the next check: a job started or ended, so a model may have loaded.</summary>
     void Poke();
+
+    /// <summary>The models loaded at the last check, connected or not.</summary>
+    IReadOnlyList<string> Loaded { get; }
+
+    /// <summary>Raised with the loaded models when they change - a model loaded, or the engine unloaded one.</summary>
+    event EventHandler<IReadOnlyList<string>> LoadedChanged;
 }
 
 /// <summary>
@@ -27,6 +33,7 @@ internal sealed class LoadedModelsReporter : BackgroundService, ILoadedModelsRep
     private readonly ILogger<LoadedModelsReporter> _logger;
     private readonly SemaphoreSlim _poke = new(0, 1);
     private string _reported;
+    private IReadOnlyList<string> _loaded = [];
     private HubConnectionState _lastConnection = HubConnectionState.Disconnected;
 
     public LoadedModelsReporter(IEngine engine, IClientCommunication communication, ISignalRHostedService connection, ILogger<LoadedModelsReporter> logger)
@@ -36,6 +43,10 @@ internal sealed class LoadedModelsReporter : BackgroundService, ILoadedModelsRep
         _connection = connection;
         _logger = logger;
     }
+
+    public IReadOnlyList<string> Loaded => Volatile.Read(ref _loaded);
+
+    public event EventHandler<IReadOnlyList<string>> LoadedChanged;
 
     public void Poke()
     {
@@ -72,6 +83,14 @@ internal sealed class LoadedModelsReporter : BackgroundService, ILoadedModelsRep
 
     private async Task SendAsync(LoadedModel[] loaded, CancellationToken cancellationToken)
     {
+        //NOTE: The screensaver hears of a load or unload whether or not the server can be told.
+        var names = loaded.Select(x => x.Name).Order(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (!names.SequenceEqual(Loaded, StringComparer.OrdinalIgnoreCase))
+        {
+            Volatile.Write(ref _loaded, names);
+            LoadedChanged?.Invoke(this, names);
+        }
+
         var state = _connection.State;
         if (state == HubConnectionState.Connected && _lastConnection != HubConnectionState.Connected) _reported = null;
         _lastConnection = state;

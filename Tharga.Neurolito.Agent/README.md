@@ -103,7 +103,7 @@ returns it finishes the running job and takes no new one. It tells the server, w
 | `Desktop__EnergyMode` | `Never` (default), `WhileWorking` or `WhileReady`: when the agent keeps the machine from sleeping. |
 | `Desktop__ResumeDelaySeconds` | How long the machine must be free before work starts (default `15`). |
 | `Desktop__AlwaysWork` | Take work even while the machine is in use. |
-| `Desktop__PipeName` | The local pipe the screensaver reads (default `neurolito-agent`). It carries the shape of the work, never its text. |
+| `Desktop__PipeName` | The local pipe the screensaver reads (default `neurolito-agent`). It carries the shape of the work, never its text: word and token counts, work units, models loading and unloading, and the server's count of the queued jobs the machine can and cannot take. |
 
 On Windows the agent also reads its settings from `HKLM\SOFTWARE\Neurolito\Agent` (one value per setting, named as
 in configuration, for example `Desktop:EnergyMode`), where the installer writes them.

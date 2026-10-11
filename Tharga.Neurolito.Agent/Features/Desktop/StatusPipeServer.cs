@@ -18,9 +18,11 @@ namespace Tharga.Neurolito.Agent.Features.Desktop;
 /// </summary>
 /// <remarks>
 /// <para>The screensaver says <c>idle</c> when it starts and <c>active</c> when it ends; a dropped connection counts as
-/// <c>active</c>. It is told <c>state</c> (presence, working, machine, engine, model, version) on connecting and on every
-/// change, and <c>job-start</c> (model, words in), <c>tokens</c> and <c>job-end</c> (words out, duration) as work
-/// happens. Never prompt or answer text.</para>
+/// <c>active</c>. It is told <c>state</c> (presence, working, machine, engine, model, version, loaded models) on
+/// connecting and on every change, and <c>job-start</c> (model, words in), <c>tokens</c> and <c>job-end</c> (words out,
+/// duration, work units) as work happens. <c>model</c> says a model is <c>loading</c> for a job, has <c>loaded</c> or
+/// was <c>unloaded</c>; <c>work</c> is the machine's work units by hour and day; <c>queue</c> the server's count of the
+/// jobs it may run, with and without a model for them. Never prompt or answer text.</para>
 /// <para>Local only: authenticated users on this machine may connect, the network may not. Each client has its own
 /// queue, so a screensaver that stops reading cannot hold up the agent.</para>
 /// </remarks>
@@ -38,14 +40,21 @@ internal sealed class StatusPipeServer : BackgroundService
     private readonly IAgentActivity _activity;
     private readonly IEngine _engine;
     private readonly ILogger<StatusPipeServer> _logger;
+    private readonly ILoadedModelsReporter _loaded;
+    private readonly IQueueSummaryStore _queue;
+    private readonly IWorkLog _work;
     private readonly Lock _clientsLock = new();
     private readonly List<Channel<string>> _clients = [];
 
     private string _engineName;
     private string _model;
 
-    public StatusPipeServer(IOptions<DesktopOptions> options, IPresenceMonitor presence, IAgentActivity activity, IEngine engine, ILogger<StatusPipeServer> logger)
+    public StatusPipeServer(IOptions<DesktopOptions> options, IPresenceMonitor presence, IAgentActivity activity, IEngine engine, ILogger<StatusPipeServer> logger,
+        ILoadedModelsReporter loaded = null, IQueueSummaryStore queue = null, IWorkLog work = null)
     {
+        _loaded = loaded;
+        _queue = queue;
+        _work = work;
         _options = options.Value;
         _presence = presence;
         _activity = activity;
@@ -66,6 +75,9 @@ internal sealed class StatusPipeServer : BackgroundService
 
         _presence.Changed += OnPresenceChanged;
         _activity.Changed += OnActivity;
+        if (_loaded != null) _loaded.LoadedChanged += OnLoadedChanged;
+        if (_queue != null) _queue.Changed += OnQueueChanged;
+        if (_work != null) _work.Changed += OnWorkChanged;
         _logger.LogInformation("The screensaver pipe is \\\\.\\pipe\\{Pipe}.", _options.PipeName);
 
         try
@@ -102,6 +114,9 @@ internal sealed class StatusPipeServer : BackgroundService
         {
             _presence.Changed -= OnPresenceChanged;
             _activity.Changed -= OnActivity;
+            if (_loaded != null) _loaded.LoadedChanged -= OnLoadedChanged;
+            if (_queue != null) _queue.Changed -= OnQueueChanged;
+            if (_work != null) _work.Changed -= OnWorkChanged;
         }
     }
 
@@ -121,6 +136,8 @@ internal sealed class StatusPipeServer : BackgroundService
         var queue = Channel.CreateBounded<string>(new BoundedChannelOptions(QueueLength) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
         lock (_clientsLock) _clients.Add(queue);
         queue.Writer.TryWrite(StateLine());
+        if (WorkLine() is { } work) queue.Writer.TryWrite(work);
+        if (QueueLine(_queue?.Latest) is { } waiting) queue.Writer.TryWrite(waiting);
 
         var idle = false;
         using var done = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
@@ -174,11 +191,17 @@ internal sealed class StatusPipeServer : BackgroundService
     {
         if (e.Kind == "job-start") _model = e.Model;
 
+        //NOTE: A job for a model not loaded starts by loading it, which is the long wait before the first word.
+        if (e.Kind == "job-start" && _loaded != null && !string.IsNullOrEmpty(e.Model) && !_loaded.Loaded.Contains(e.Model, StringComparer.OrdinalIgnoreCase))
+        {
+            Broadcast(ModelLine("loading", e.Model));
+        }
+
         Broadcast(e.Kind switch
         {
             "job-start" => JsonSerializer.Serialize(new { type = e.Kind, model = e.Model, words = e.Words }, Json),
             "tokens" => JsonSerializer.Serialize(new { type = e.Kind, count = e.Tokens }, Json),
-            _ => JsonSerializer.Serialize(new { type = e.Kind, words = e.Words, durationMs = Math.Round(e.DurationMs) }, Json)
+            _ => JsonSerializer.Serialize(new { type = e.Kind, words = e.Words, durationMs = Math.Round(e.DurationMs), workUnits = e.WorkUnits is { } wu ? Math.Round(wu, 2) : (double?)null }, Json)
         });
 
         if (e.Kind != "tokens") Broadcast(StateLine());
@@ -192,7 +215,52 @@ internal sealed class StatusPipeServer : BackgroundService
         machine = Environment.MachineName,
         engine = _engineName,
         model = _model,
-        version = Version
+        version = Version,
+        loaded = _loaded?.Loaded
+    }, Json);
+
+    private IReadOnlyList<string> _lastLoaded = [];
+
+    private void OnLoadedChanged(object sender, IReadOnlyList<string> loaded)
+    {
+        foreach (var model in loaded.Except(_lastLoaded, StringComparer.OrdinalIgnoreCase)) Broadcast(ModelLine("loaded", model));
+        foreach (var model in _lastLoaded.Except(loaded, StringComparer.OrdinalIgnoreCase)) Broadcast(ModelLine("unloaded", model));
+        _lastLoaded = loaded;
+        Broadcast(StateLine());
+    }
+
+    private void OnQueueChanged(object sender, QueueSummaryMessage summary)
+    {
+        if (QueueLine(summary) is { } line) Broadcast(line);
+    }
+
+    private void OnWorkChanged(object sender, EventArgs e)
+    {
+        if (WorkLine() is { } line) Broadcast(line);
+    }
+
+    private static string ModelLine(string change, string model) => JsonSerializer.Serialize(new { type = "model", change, model }, Json);
+
+    private string WorkLine()
+    {
+        if (_work == null) return null;
+        var summary = _work.Summary(DateTime.UtcNow);
+        return JsonSerializer.Serialize(new
+        {
+            type = "work",
+            workUnitsToday = Math.Round(summary.WorkUnitsToday, 2),
+            jobsToday = summary.JobsToday,
+            hours = summary.Hours.Select(x => Math.Round(x, 2)),
+            days = summary.Days.Select(x => Math.Round(x, 2))
+        }, Json);
+    }
+
+    private static string QueueLine(QueueSummaryMessage summary) => summary == null ? null : JsonSerializer.Serialize(new
+    {
+        type = "queue",
+        pickable = summary.Pickable,
+        unpickable = summary.Unpickable,
+        missing = (summary.Missing ?? []).Select(x => new { model = x.Model, jobs = x.Jobs })
     }, Json);
 
     private void Broadcast(string line)

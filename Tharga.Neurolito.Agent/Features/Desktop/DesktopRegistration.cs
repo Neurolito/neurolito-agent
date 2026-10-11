@@ -18,6 +18,10 @@ public static class DesktopRegistration
 
         if (!options.Enabled || !OperatingSystem.IsWindows()) return;
 
+        //NOTE: Only with the desktop: the store being there is what makes the agent ask the server for queue counts.
+        builder.Services.AddSingleton<IQueueSummaryStore, QueueSummaryStore>();
+        builder.Services.AddSingleton<IWorkLog, WorkLog>();
+
         builder.Services.AddSingleton<PresenceMonitor>();
         builder.Services.AddSingleton<IPresenceMonitor>(s => s.GetRequiredService<PresenceMonitor>());
         builder.Services.AddHostedService(s => s.GetRequiredService<PresenceMonitor>());

@@ -43,12 +43,14 @@ internal class EngineService : IEngineService, IDisposable
     private readonly ILogger<EngineService> _logger;
     private readonly IAgentActivity _activity;
     private readonly ILoadedModelsReporter _loadedModels;
+    private readonly Desktop.IQueueSummaryStore _queueSummary;
 
     private readonly CancellationTokenSource _cancellationTokenSource;
 
-    public EngineService(IEngine engine, IClientCommunication clientCommunication, IMetricsService metricsService, IInstanceService instanceService, IEventService eventService, ILogger<EngineService> logger, IAgentActivity activity = null, ILoadedModelsReporter loadedModels = null)
+    public EngineService(IEngine engine, IClientCommunication clientCommunication, IMetricsService metricsService, IInstanceService instanceService, IEventService eventService, ILogger<EngineService> logger, IAgentActivity activity = null, ILoadedModelsReporter loadedModels = null, Desktop.IQueueSummaryStore queueSummary = null)
     {
         _activity = activity;
+        _queueSummary = queueSummary;
         _loadedModels = loadedModels;
         _engine = engine;
         _clientCommunication = clientCommunication;
@@ -264,6 +266,7 @@ internal class EngineService : IEngineService, IDisposable
 
             var workUnits = CalculateWorkUnits(final.InputTokens + final.OutputTokens, modelParameterCount);
             var throughput = workDurationMs > 0 ? workUnits / workDurationMs * 1000 : null;
+            wu = workUnits;
 
             _logger.LogInformation("Time: Completed in {elapsed}ms. Load time {loadTime}ms, input time {inputTime}ms, {outputTime}ms", totalDurationMs, loadDurationMs, inputDurationMs, outputDurationMs);
             _logger.LogInformation("WU: Used {workUnits} work units with a throughput of {throughput} work units per second. TokensPerSecond: {tokensPerSecond}.", workUnits, throughput, tokensPerSecond);
@@ -356,7 +359,7 @@ internal class EngineService : IEngineService, IDisposable
         }
         finally
         {
-            if (started) _activity?.JobEnded(AgentActivity.WordsIn(output.ToString()), sw.Elapsed.TotalMilliseconds);
+            if (started) _activity?.JobEnded(AgentActivity.WordsIn(output.ToString()), sw.Elapsed.TotalMilliseconds, (double?)wu);
         }
     }
 
@@ -435,6 +438,7 @@ internal class EngineService : IEngineService, IDisposable
                 Kind = _engine.Kind,
                 Models = models,
                 SupportsSelfTest = true,
+                SupportsQueueSummary = _queueSummary != null,
                 AnthropicContextLength = _engine.AnthropicContextLength,
             };
         }

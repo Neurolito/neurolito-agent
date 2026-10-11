@@ -80,6 +80,13 @@ public record Engine
     public bool SupportsSelfTest { get; init; }
 
     /// <summary>
+    /// Whether the agent wants <see cref="QueueSummaryMessage"/>: a desktop agent shows the counts on its screensaver.
+    /// Older agents leave it false and are never sent one.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool SupportsQueueSummary { get; init; }
+
+    /// <summary>
     /// The context, in tokens, the agent gives Anthropic-compatible requests, capped per model at what it was
     /// trained for. Null from older agents and from agents that leave the engine's default in place, which for
     /// Ollama keeps only the end of a long prompt.

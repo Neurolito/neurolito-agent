@@ -13,10 +13,10 @@ public interface IAgentActivity
 
     void JobStarted(string model, int inputWords);
     void Tokens(int count);
-    void JobEnded(int outputWords, double durationMs);
+    void JobEnded(int outputWords, double durationMs, double? workUnits = null);
 }
 
-public record ActivityEvent(string Kind, string Model = null, int Words = 0, int Tokens = 0, double DurationMs = 0);
+public record ActivityEvent(string Kind, string Model = null, int Words = 0, int Tokens = 0, double DurationMs = 0, double? WorkUnits = null);
 
 internal sealed class AgentActivity : IAgentActivity
 {
@@ -37,10 +37,10 @@ internal sealed class AgentActivity : IAgentActivity
         Changed?.Invoke(this, new ActivityEvent("tokens", Tokens: count));
     }
 
-    public void JobEnded(int outputWords, double durationMs)
+    public void JobEnded(int outputWords, double durationMs, double? workUnits = null)
     {
         if (Interlocked.Decrement(ref _running) < 0) Interlocked.Exchange(ref _running, 0);
-        Changed?.Invoke(this, new ActivityEvent("job-end", Words: outputWords, DurationMs: durationMs));
+        Changed?.Invoke(this, new ActivityEvent("job-end", Words: outputWords, DurationMs: durationMs, WorkUnits: workUnits));
     }
 
     /// <summary>The number of words in a text, which is all of it the screen is told.</summary>
