@@ -21,6 +21,15 @@ public class LlamaServerEngineTests
         Assert.Equal(expected, ModelStore.QuantizationOf(fileName));
     }
 
+    [Theory]
+    [InlineData("Meta-Llama-3.1-8B-Instruct-Q6_K.gguf", "Q6_K", true)]
+    [InlineData("Meta-Llama-3.1-8B-Instruct-Q6_K_L.gguf", "Q6_K", false)]
+    [InlineData("qwen2.5-coder-7b-instruct-q4_k_m.gguf", "Q4_K_M", true)]
+    public void AFileIsNamedForAQuantisationOnlyAsAWholePart(string file, string quantisation, bool expected)
+    {
+        Assert.Equal(expected, HuggingFaceClient.NamedFor(file, quantisation));
+    }
+
     [Fact]
     public void TheHeaderGivesTheParameterCountTheContextAndWhetherTheModelThinks()
     {
