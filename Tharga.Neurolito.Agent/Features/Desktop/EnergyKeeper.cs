@@ -11,10 +11,15 @@ internal sealed class EnergyKeeper : IHostedService, IDisposable
     private readonly IAgentActivity _activity;
     private readonly ILogger<EnergyKeeper> _logger;
     private readonly SleepBlocker _blocker = new();
+    private readonly IDesktopSettingsStore _settings;
+    private readonly Lock _update = new();
+    private EnergyMode _mode;
 
-    public EnergyKeeper(IOptions<DesktopOptions> options, IPresenceMonitor presence, IAgentActivity activity, ILogger<EnergyKeeper> logger)
+    public EnergyKeeper(IOptions<DesktopOptions> options, IPresenceMonitor presence, IAgentActivity activity, ILogger<EnergyKeeper> logger, IDesktopSettingsStore settings = null)
     {
         _options = options.Value;
+        _settings = settings;
+        _mode = _options.EnergyMode;
         _presence = presence;
         _activity = activity;
         _logger = logger;
@@ -22,13 +27,16 @@ internal sealed class EnergyKeeper : IHostedService, IDisposable
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        if (_options.EnergyMode == EnergyMode.Never) return Task.CompletedTask;
-
+        //NOTE: Listening whatever the mode: the server may change it while the agent runs.
         _presence.Changed += OnPresenceChanged;
         _activity.Changed += OnChanged;
+        if (_settings != null) _settings.Changed += OnSettingsChanged;
         Update();
         return Task.CompletedTask;
     }
+
+    /// <summary>Whether the machine is being kept awake now.</summary>
+    internal bool Holding => _blocker.Held;
 
     /// <summary>Lets go before the machine sleeps, so the request is not what Windows finds holding it up.</summary>
     public void Release() => Apply(false);
@@ -37,10 +45,23 @@ internal sealed class EnergyKeeper : IHostedService, IDisposable
 
     private void OnChanged(object sender, ActivityEvent e) => Update();
 
+    private void OnSettingsChanged(object sender, EventArgs e) => Update();
+
     private void Update()
     {
-        var working = _activity.Running > 0;
-        Apply(ShouldHold(_options.EnergyMode, working, _presence.Current));
+        lock (_update)
+        {
+            //NOTE: A new mode lets go first, so a request held under the old one does not keep its old reason.
+            var mode = _options.EnergyMode;
+            if (mode != _mode)
+            {
+                _logger.LogInformation("The energy mode is now {Mode}.", mode);
+                Apply(false);
+                _mode = mode;
+            }
+
+            Apply(ShouldHold(mode, _activity.Running > 0, _presence.Current));
+        }
     }
 
     /// <summary>Whether to hold off sleep: a running job always finishes under While working and While ready.</summary>
@@ -60,8 +81,8 @@ internal sealed class EnergyKeeper : IHostedService, IDisposable
         if (_blocker.Held == hold) return;
 
         //NOTE: One reason for the request's life: Windows keeps the one it was created with, as powercfg /requests shows.
-        var reason = _options.EnergyMode == EnergyMode.WhileWorking ? "Neurolito agent: finishing a job" : "Neurolito agent: working while nobody uses this machine";
-        if (_blocker.Set(hold, reason)) _logger.LogInformation(hold ? "Keeping the machine awake ({Mode})." : "Letting the machine sleep again ({Mode}).", _options.EnergyMode);
+        var reason = _mode == EnergyMode.WhileWorking ? "Neurolito agent: finishing a job" : "Neurolito agent: working while nobody uses this machine";
+        if (_blocker.Set(hold, reason)) _logger.LogInformation(hold ? "Keeping the machine awake ({Mode})." : "Letting the machine sleep again ({Mode}).", _mode);
         else _logger.LogWarning("Windows refused to {Action} the power request.", hold ? "set" : "clear");
     }
 
@@ -69,6 +90,7 @@ internal sealed class EnergyKeeper : IHostedService, IDisposable
     {
         _presence.Changed -= OnPresenceChanged;
         _activity.Changed -= OnChanged;
+        if (_settings != null) _settings.Changed -= OnSettingsChanged;
         Release();
         return Task.CompletedTask;
     }

@@ -23,6 +23,9 @@ namespace Tharga.Neurolito.Agent.Features.Desktop;
 /// duration, work units) as work happens. <c>model</c> says a model is <c>loading</c> for a job, has <c>loaded</c> or
 /// was <c>unloaded</c>; <c>work</c> is the machine's work units by hour and day; <c>queue</c> the server's count of the
 /// jobs it may run, with and without a model for them. Never prompt or answer text.</para>
+/// <para>A helper in each user's session says <c>screensaver</c> (whether the user's screensaver is the Neurolito one,
+/// on, and after how long) and is told <c>set-screensaver</c> when the server changes it. A helper is told nothing
+/// else. Its user is read from its session, not from what it says.</para>
 /// <para>Local only: authenticated users on this machine may connect, the network may not. Each client has its own
 /// queue, so a screensaver that stops reading cannot hold up the agent.</para>
 /// </remarks>
@@ -44,14 +47,16 @@ internal sealed class StatusPipeServer : BackgroundService
     private readonly IQueueSummaryStore _queue;
     private readonly IWorkLog _work;
     private readonly Lock _clientsLock = new();
-    private readonly List<Channel<string>> _clients = [];
+    private readonly List<PipeClient> _clients = [];
+    private readonly IUserScreensavers _screensavers;
 
     private string _engineName;
     private string _model;
 
     public StatusPipeServer(IOptions<DesktopOptions> options, IPresenceMonitor presence, IAgentActivity activity, IEngine engine, ILogger<StatusPipeServer> logger,
-        ILoadedModelsReporter loaded = null, IQueueSummaryStore queue = null, IWorkLog work = null)
+        ILoadedModelsReporter loaded = null, IQueueSummaryStore queue = null, IWorkLog work = null, IUserScreensavers screensavers = null)
     {
+        _screensavers = screensavers;
         _loaded = loaded;
         _queue = queue;
         _work = work;
@@ -134,7 +139,8 @@ internal sealed class StatusPipeServer : BackgroundService
     {
         var who = Describe(pipe);
         var queue = Channel.CreateBounded<string>(new BoundedChannelOptions(QueueLength) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
-        lock (_clientsLock) _clients.Add(queue);
+        var client = new PipeClient(Guid.NewGuid(), queue);
+        lock (_clientsLock) _clients.Add(client);
         queue.Writer.TryWrite(StateLine());
         if (WorkLine() is { } work) queue.Writer.TryWrite(work);
         if (QueueLine(_queue?.Latest) is { } waiting) queue.Writer.TryWrite(waiting);
@@ -165,6 +171,17 @@ internal sealed class StatusPipeServer : BackgroundService
                     idle = false;
                     _presence.ScreensaverRunning(false);
                 }
+                else if (line.StartsWith('{') && _screensavers != null)
+                {
+                    client.User ??= UserOf(pipe);
+                    if (UserScreensavers.Parse(line, client.User) is { } report)
+                    {
+                        if (!client.Helper) _logger.LogInformation("A screensaver helper reports for {User}: {Who}.", client.User, who);
+                        client.Helper = true;
+                        _screensavers.Report(client.Id, report, x => queue.Writer.TryWrite(x));
+                        if (ErrorOf(line) is { } error) _logger.LogWarning("The screensaver helper for {User} could not make a change: {Error}", client.User, error);
+                    }
+                }
             }
 
             await done.CancelAsync();
@@ -175,7 +192,8 @@ internal sealed class StatusPipeServer : BackgroundService
         }
         finally
         {
-            lock (_clientsLock) _clients.Remove(queue);
+            lock (_clientsLock) _clients.Remove(client);
+            _screensavers?.Disconnected(client.Id);
             queue.Writer.TryComplete();
 
             //NOTE: A screensaver killed with the user's mouse move never says active; its disconnect does.
@@ -267,8 +285,34 @@ internal sealed class StatusPipeServer : BackgroundService
     {
         lock (_clientsLock)
         {
-            foreach (var client in _clients) client.Writer.TryWrite(line);
+            //NOTE: A helper has no screen; it is told only what concerns its user's screensaver.
+            foreach (var client in _clients.Where(x => !x.Helper)) client.Queue.Writer.TryWrite(line);
         }
+    }
+
+    private static string UserOf(NamedPipeServerStream pipe) =>
+        GetNamedPipeClientSessionId(pipe.SafePipeHandle, out var session) ? ConsoleSession.UserOf(session) : null;
+
+    private static string ErrorOf(string line)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(line);
+            return json.RootElement.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String ? error.GetString() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>A connection to the pipe: a screensaver, or a helper once it has reported its user's screensaver.</summary>
+    private sealed class PipeClient(Guid id, Channel<string> queue)
+    {
+        public Guid Id { get; } = id;
+        public Channel<string> Queue { get; } = queue;
+        public volatile bool Helper;
+        public string User;
     }
 
     private static string Describe(NamedPipeServerStream pipe)

@@ -104,9 +104,25 @@ returns it finishes the running job and takes no new one. It tells the server, w
 | `Desktop__ResumeDelaySeconds` | How long the machine must be free before work starts (default `15`). |
 | `Desktop__AlwaysWork` | Take work even while the machine is in use. |
 | `Desktop__PipeName` | The local pipe the screensaver reads (default `neurolito-agent`). It carries the shape of the work, never its text: word and token counts, work units, models loading and unloading, and the server's count of the queued jobs the machine can and cannot take. |
+| `Desktop__SettingsPath` | Where the settings changed from the server are kept (default `%ProgramData%\Neurolito\desktop.json`). |
 
 On Windows the agent also reads its settings from `HKLM\SOFTWARE\Neurolito\Agent` (one value per setting, named as
 in configuration, for example `Desktop:EnergyMode`), where the installer writes them.
+
+**Settings from the server.** A desktop agent tells the server its settings after it connects and whenever one
+changes, and the server can change them:
+- the energy mode, always work and the resume delay. They apply at once and are kept in `Desktop__SettingsPath`,
+  whose values win over every other source from then on, the installer's included;
+- the active power plan's *sleep after* and *turn off the display after*, on mains power and, on a machine with a
+  battery, on battery. Group Policy can override these, and the agent says when it does;
+- each logged-on user's screensaver: whether it is on, and after how long. It is changed only for a user whose
+  screensaver is the Neurolito one.
+
+A service cannot read or change another account's screensaver, so a helper in each user's session does it over the
+pipe. It sends `{"type":"screensaver","neurolito":true,"active":true,"timeoutSeconds":600,"managed":false}` when it
+connects and whenever the setting changes, and adds `"error"` when a change failed. The agent answers with
+`{"type":"set-screensaver","active":true,"timeoutSeconds":900}` (a field left out stays as it is) and sends a helper
+nothing else. The user is read from the helper's session, not from what it says.
 
 ### Updates
 `Updates__Enabled=true` with `Updates__Source` (a GitHub repository address, a web folder or a local folder) lets an

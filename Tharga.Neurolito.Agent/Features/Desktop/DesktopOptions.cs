@@ -28,6 +28,12 @@ public record DesktopOptions
 
     /// <summary>The local pipe the screensaver reads, <c>\\.\pipe\{PipeName}</c>.</summary>
     public string PipeName { get; set; } = "neurolito-agent";
+
+    /// <summary>
+    /// Where the settings changed from the server are kept: a JSON file whose values win over every other source, so a
+    /// change made on the web outlives a restart. Empty for <c>%ProgramData%\Neurolito\desktop.json</c>.
+    /// </summary>
+    public string SettingsPath { get; set; }
 }
 
 /// <summary>When the agent holds off the machine's sleep. The display may still turn off; only sleep is held off.</summary>
