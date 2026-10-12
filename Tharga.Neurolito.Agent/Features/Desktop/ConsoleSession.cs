@@ -2,6 +2,26 @@ using System.Runtime.InteropServices;
 
 namespace Tharga.Neurolito.Agent.Features.Desktop;
 
+/// <param name="UserLoggedOn">Whether anyone is logged on at the machine's own screen and keyboard.</param>
+/// <param name="Locked">Null when the platform would not say.</param>
+public readonly record struct ConsoleState(bool UserLoggedOn, bool? Locked);
+
+/// <summary>The machine's console session as the platform reports it, so presence can be decided the same way everywhere.</summary>
+public interface IConsoleSession
+{
+    /// <summary>
+    /// The console's state, or null when it cannot be read. A failed read is never taken for an empty console, since
+    /// that would hand a machine someone is using to the queue.
+    /// </summary>
+    ConsoleState? Read();
+}
+
+/// <summary>The console session on Windows, read through <see cref="ConsoleSession"/>.</summary>
+internal sealed class WindowsConsoleSession : IConsoleSession
+{
+    public ConsoleState? Read() => ConsoleSession.Read();
+}
+
 /// <summary>The machine's console session: is anyone logged on at the screen and keyboard, and is it locked.</summary>
 /// <remarks>
 /// Asked of Windows rather than learned from session events, so it is right from the moment the agent starts, and the
@@ -18,28 +38,25 @@ internal static class ConsoleSession
     private const int LockFlag = 0; // WTS_SESSIONSTATE_LOCK
     private const int UnlockFlag = 1; // WTS_SESSIONSTATE_UNLOCK
 
-    /// <param name="Locked">Null when Windows would not say.</param>
-    public readonly record struct State(bool UserLoggedOn, bool? Locked);
-
     /// <summary>
     /// The console's state, or null when it cannot be read: not Windows, or the account is not allowed to ask. A failed
     /// read is never taken for an empty console, since that would hand a machine someone is using to the queue.
     /// </summary>
-    public static State? Read()
+    public static ConsoleState? Read()
     {
         if (!OperatingSystem.IsWindows()) return null;
 
         var session = WTSGetActiveConsoleSessionId();
-        if (session == NoSession) return new State(false, false);
+        if (session == NoSession) return new ConsoleState(false, false);
 
         if (!TryQueryString(session, UserName, out var user)) return null;
-        if (string.IsNullOrEmpty(user)) return new State(false, false);
+        if (string.IsNullOrEmpty(user)) return new ConsoleState(false, false);
 
         return LockState(session) switch
         {
-            LockFlag => new State(true, true),
-            UnlockFlag => new State(true, false),
-            _ => new State(true, null)
+            LockFlag => new ConsoleState(true, true),
+            UnlockFlag => new ConsoleState(true, false),
+            _ => new ConsoleState(true, null)
         };
     }
 

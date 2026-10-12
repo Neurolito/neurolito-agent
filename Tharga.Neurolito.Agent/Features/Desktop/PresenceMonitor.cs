@@ -49,6 +49,7 @@ internal sealed class PresenceMonitor : BackgroundService, IPresenceMonitor
     private static readonly TimeSpan Tick = TimeSpan.FromSeconds(2);
 
     private readonly DesktopOptions _options;
+    private readonly IConsoleSession _console;
     private readonly IClientCommunication _communication;
     private readonly ISignalRHostedService _connection;
     private readonly ILogger<PresenceMonitor> _logger;
@@ -66,9 +67,10 @@ internal sealed class PresenceMonitor : BackgroundService, IPresenceMonitor
     private MachinePresence? _reported;
     private HubConnectionState _lastConnection = HubConnectionState.Disconnected;
 
-    public PresenceMonitor(IOptions<DesktopOptions> options, IClientCommunication communication, ISignalRHostedService connection, ILogger<PresenceMonitor> logger)
+    public PresenceMonitor(IOptions<DesktopOptions> options, IConsoleSession console, IClientCommunication communication, ISignalRHostedService connection, ILogger<PresenceMonitor> logger)
     {
         _options = options.Value;
+        _console = console;
         _communication = communication;
         _connection = connection;
         _logger = logger;
@@ -187,9 +189,9 @@ internal sealed class PresenceMonitor : BackgroundService, IPresenceMonitor
         if (_options.AlwaysWork) return (true, "set to work all the time");
         if (Volatile.Read(ref _screensavers) > 0) return (true, "the screensaver is on");
 
-        //NOTE: What Windows says now, else what its session events said. Unknown counts as someone at the machine:
+        //NOTE: What the platform says now, else what its session events said. Unknown counts as someone at the machine:
         //then only the screensaver frees it, which is never wrong.
-        var console = ConsoleSession.Read();
+        var console = _console.Read();
         var loggedOn = console?.UserLoggedOn ?? _loggedOnByEvent ?? true;
         var locked = console?.Locked ?? _lockedByEvent ?? false;
         if (!loggedOn) return (true, "nobody is logged on");

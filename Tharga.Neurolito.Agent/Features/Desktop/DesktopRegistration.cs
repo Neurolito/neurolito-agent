@@ -26,6 +26,7 @@ public static class DesktopRegistration
         builder.Services.AddSingleton<IQueueSummaryStore, QueueSummaryStore>();
         builder.Services.AddSingleton<IWorkLog, WorkLog>();
 
+        builder.Services.AddSingleton<IConsoleSession, WindowsConsoleSession>();
         builder.Services.AddSingleton<PresenceMonitor>();
         builder.Services.AddSingleton<IPresenceMonitor>(s => s.GetRequiredService<PresenceMonitor>());
         builder.Services.AddHostedService(s => s.GetRequiredService<PresenceMonitor>());
