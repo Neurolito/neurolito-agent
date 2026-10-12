@@ -14,6 +14,7 @@ internal static class ConsoleSession
     private const uint NoSession = 0xFFFFFFFF;
     private const int SessionInfoEx = 25;
     private const int UserName = 5;
+    private const int DomainName = 7;
     private const int LockFlag = 0; // WTS_SESSIONSTATE_LOCK
     private const int UnlockFlag = 1; // WTS_SESSIONSTATE_UNLOCK
 
@@ -40,6 +41,14 @@ internal static class ConsoleSession
             UnlockFlag => new State(true, false),
             _ => new State(true, null)
         };
+    }
+
+    /// <summary>The account logged on to a session, <c>DOMAIN\name</c>; null when nobody is, or Windows would not say.</summary>
+    public static string UserOf(uint session)
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        if (!TryQueryString(session, UserName, out var user) || string.IsNullOrEmpty(user)) return null;
+        return TryQueryString(session, DomainName, out var domain) && !string.IsNullOrEmpty(domain) ? $@"{domain}\{user}" : user;
     }
 
     private static int? LockState(uint session)

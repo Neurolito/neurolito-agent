@@ -16,6 +16,7 @@ internal sealed class SleepBlocker : IDisposable
 
     private readonly Lock _lock = new();
     private SafeFileHandle _request;
+    private string _reason;
     private bool _held;
 
     public bool Held
@@ -34,6 +35,14 @@ internal sealed class SleepBlocker : IDisposable
 
             if (hold)
             {
+                //NOTE: Windows keeps the reason a request was created with, so another reason needs another request.
+                if (_request != null && _reason != reason)
+                {
+                    _request.Dispose();
+                    _request = null;
+                }
+
+                _reason = reason;
                 _request ??= Create(reason);
                 if (_request is not { IsInvalid: false } || !PowerSetRequest(_request, SystemRequired)) return false;
             }
