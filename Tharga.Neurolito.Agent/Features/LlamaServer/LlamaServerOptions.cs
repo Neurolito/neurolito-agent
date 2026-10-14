@@ -15,8 +15,15 @@ public record LlamaServerOptions
     /// <summary>The context Anthropic requests get, capped the same way. 0 gives them <see cref="ContextLength"/>.</summary>
     public int AnthropicContextLength { get; set; } = 32768;
 
-    /// <summary>Layers on the GPU (<c>-ngl</c>). The default puts the whole model there; llama-server fits what it can.</summary>
-    public int GpuLayers { get; set; } = 999;
+    /// <summary>
+    /// Layers on the GPU (<c>-ngl</c>). Unset by default, which leaves it to llama-server: its <c>--fit</c> puts what fits
+    /// in video memory there and the rest on the CPU.
+    /// </summary>
+    /// <remarks>
+    /// Setting it turns that off for this argument. llama-server only fits arguments it was not given, so <c>999</c>
+    /// sends a model larger than video memory wholly to the GPU, where it fails to load.
+    /// </remarks>
+    public int? GpuLayers { get; set; }
 
     /// <summary>
     /// Requests llama-server runs at once (<c>--parallel</c>). One gives each request the whole context; more split it.

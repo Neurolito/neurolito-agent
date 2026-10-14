@@ -87,7 +87,7 @@ downloads it. A model can also be named directly as `hf.co/{owner}/{repo}:{quant
 | `LlamaServer__ModelsPath` | Where models are kept. Default: `Neurolito/models` in the machine's application data folder. |
 | `LlamaServer__ContextLength` | The context a prompt gets when it asks for none (default `8192`), capped at what the model was trained for. |
 | `LlamaServer__IdleUnloadMinutes` | Unload a model after this long without a request (default `10`); `0` keeps it loaded. |
-| `LlamaServer__GpuLayers` | Layers on the GPU (default `999`, as many as fit). |
+| `LlamaServer__GpuLayers` | Layers on the GPU. Unset by default: `llama-server` puts what fits in video memory there and the rest on the CPU. Setting it turns that off, so a model larger than video memory fails to load. |
 | `LlamaServer__ExtraArguments` | More arguments for `llama-server`, for example `--flash-attn on`. |
 | `LlamaServer__HuggingFaceToken` | For gated models. Optional. |
 

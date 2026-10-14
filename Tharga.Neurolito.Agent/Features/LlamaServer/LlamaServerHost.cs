@@ -161,12 +161,7 @@ internal sealed class LlamaServerHost : IHostedService, IAsyncDisposable
             CreateNoWindow = true,
             WorkingDirectory = Path.GetDirectoryName(executable)!
         };
-        foreach (var argument in new[]
-                 {
-                     "-m", path, "--alias", name, "--jinja",
-                     "-ngl", $"{_options.GpuLayers}", "-c", $"{contextLength}", "--parallel", $"{Math.Max(1, _options.Parallel)}",
-                     "--host", "127.0.0.1", "--port", $"{port}"
-                 }.Concat((_options.ExtraArguments ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries)))
+        foreach (var argument in Arguments(_options, name, path, contextLength, port))
         {
             start.ArgumentList.Add(argument);
         }
@@ -220,6 +215,20 @@ internal sealed class LlamaServerHost : IHostedService, IAsyncDisposable
         }
 
         _logger.LogInformation("llama-server is ready with {Model}.", name);
+    }
+
+    /// <summary>The command line llama-server is started with.</summary>
+    internal static IEnumerable<string> Arguments(LlamaServerOptions options, string name, string path, int contextLength, int port)
+    {
+        string[] arguments = ["-m", path, "--alias", name, "--jinja"];
+
+        //NOTE: Passed only when set. llama-server's --fit adjusts the arguments it was not given, so an -ngl of its own
+        //turns that off: -ngl 999 put all of qwen3-coder:30b (19 GB) on a 12 GB RTX 5070, and it failed to load.
+        if (options.GpuLayers is { } layers) arguments = [.. arguments, "-ngl", $"{layers}"];
+
+        return arguments
+            .Concat(["-c", $"{contextLength}", "--parallel", $"{Math.Max(1, options.Parallel)}", "--host", "127.0.0.1", "--port", $"{port}"])
+            .Concat((options.ExtraArguments ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
     private async Task StopProcessAsync(string reason)

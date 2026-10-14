@@ -31,6 +31,24 @@ public class LlamaServerEngineTests
     }
 
     [Fact]
+    public void GpuLayersAreLeftToLlamaServerUnlessConfigured()
+    {
+        //NOTE: llama-server fits only the arguments it was not given; an -ngl of ours stops a large model being split.
+        var arguments = LlamaServerHost.Arguments(new LlamaServerOptions(), "qwen3-coder:30b", "m.gguf", 32768, 5000).ToArray();
+
+        Assert.DoesNotContain("-ngl", arguments);
+        Assert.Equal(["-m", "m.gguf", "--alias", "qwen3-coder:30b", "--jinja", "-c", "32768", "--parallel", "1", "--host", "127.0.0.1", "--port", "5000"], arguments);
+    }
+
+    [Fact]
+    public void ConfiguredGpuLayersAndExtraArgumentsArePassedOn()
+    {
+        var arguments = LlamaServerHost.Arguments(new LlamaServerOptions { GpuLayers = 20, ExtraArguments = "--flash-attn on" }, "m", "m.gguf", 8192, 5000).ToArray();
+
+        Assert.Equal(["-m", "m.gguf", "--alias", "m", "--jinja", "-ngl", "20", "-c", "8192", "--parallel", "1", "--host", "127.0.0.1", "--port", "5000", "--flash-attn", "on"], arguments);
+    }
+
+    [Fact]
     public void TheHeaderGivesTheParameterCountTheContextAndWhetherTheModelThinks()
     {
         var gguf = Gguf(
