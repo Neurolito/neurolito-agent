@@ -20,8 +20,10 @@ body:
     id: route
     attributes:
       label: How the agent is installed
+      description: Installed with the Windows installer and the problem is the installer, the screensaver or the service starting and stopping? Report it at [neurolito-agent-windows](https://github.com/Neurolito/neurolito-agent-windows/issues/new/choose) instead.
       options:
         - Container
+        - Windows installer (MSI)
         - Chocolatey (Windows service)
         - From source
         - Not about the agent (client package)
