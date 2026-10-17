@@ -25,7 +25,8 @@ namespace Tharga.Neurolito.Agent.Features.Desktop;
 /// jobs it may run, with and without a model for them. Never prompt or answer text.</para>
 /// <para>A helper in each user's session says <c>screensaver</c> (whether the user's screensaver is the Neurolito one,
 /// on, and after how long) and is told <c>set-screensaver</c> when the server changes it. A helper is told nothing
-/// else. Its user is read from its session, not from what it says.</para>
+/// else. Its user is read from its session, or else from the pipe, never from what it says; a report whose user
+/// cannot be read is dropped, with a warning.</para>
 /// <para>Local only: authenticated users on this machine may connect, the network may not. Each client has its own
 /// queue, so a screensaver that stops reading cannot hold up the agent.</para>
 /// </remarks>
@@ -174,7 +175,12 @@ internal sealed class StatusPipeServer : BackgroundService
                 else if (line.StartsWith('{') && _screensavers != null)
                 {
                     client.User ??= UserOf(pipe);
-                    if (UserScreensavers.Parse(line, client.User) is { } report)
+                    if (client.User == null)
+                    {
+                        if (!client.Unidentified) _logger.LogWarning("A screensaver helper's report was dropped: Windows would not say which user it runs as ({Who}).", who);
+                        client.Unidentified = true;
+                    }
+                    else if (UserScreensavers.Parse(line, client.User) is { } report)
                     {
                         if (!client.Helper) _logger.LogInformation("A screensaver helper reports for {User}: {Who}.", client.User, who);
                         client.Helper = true;
@@ -290,8 +296,11 @@ internal sealed class StatusPipeServer : BackgroundService
         }
     }
 
-    private static string UserOf(NamedPipeServerStream pipe) =>
-        GetNamedPipeClientSessionId(pipe.SafePipeHandle, out var session) ? ConsoleSession.UserOf(session) : null;
+    //NOTE: The session's user first; a virtual account may be refused that query, and then the pipe names its client.
+    //RunAsClient fails for a client connected with Identification, as the helper is; this does not.
+    private static string UserOf(NamedPipeServerStream pipe) => UserScreensavers.FirstUser(
+        () => GetNamedPipeClientSessionId(pipe.SafePipeHandle, out var session) ? ConsoleSession.UserOf(session) : null,
+        pipe.GetImpersonationUserName);
 
     private static string ErrorOf(string line)
     {
@@ -313,6 +322,7 @@ internal sealed class StatusPipeServer : BackgroundService
         public Channel<string> Queue { get; } = queue;
         public volatile bool Helper;
         public string User;
+        public bool Unidentified;
     }
 
     private static string Describe(NamedPipeServerStream pipe)
