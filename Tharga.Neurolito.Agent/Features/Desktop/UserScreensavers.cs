@@ -90,6 +90,23 @@ internal sealed class UserScreensavers : IUserScreensavers
         return null;
     }
 
+    /// <summary>The first user a source names; a source that fails or names nobody is passed over. Null when none does.</summary>
+    internal static string FirstUser(params Func<string>[] sources)
+    {
+        foreach (var source in sources)
+        {
+            try
+            {
+                if (source() is { Length: > 0 } user) return user;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException or InvalidOperationException)
+            {
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>The line that asks a helper to change its user's screensaver.</summary>
     internal static string SetLine(ScreensaverChange change) => JsonSerializer.Serialize(new SetScreensaver { Active = change.Active, TimeoutSeconds = change.TimeoutSeconds }, Json);
 

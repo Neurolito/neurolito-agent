@@ -224,6 +224,21 @@ public sealed class DesktopSettingsTests : IDisposable
         Assert.Equal(2, raised);
     }
 
+    [Fact]
+    public void AHelpersUserComesFromItsTokenWhenTheSessionWillNotSay()
+    {
+        Assert.Equal(@"PC\ann", UserScreensavers.FirstUser(() => null, () => @"PC\ann"));
+        Assert.Equal(@"PC\ann", UserScreensavers.FirstUser(() => "", () => @"PC\ann"));
+        Assert.Equal(@"PC\ann", UserScreensavers.FirstUser(() => throw new UnauthorizedAccessException(), () => @"PC\ann"));
+    }
+
+    [Fact]
+    public void TheSessionsUserWinsAndNobodyIsNull()
+    {
+        Assert.Equal(@"PC\ann", UserScreensavers.FirstUser(() => @"PC\ann", () => @"PC\bob"));
+        Assert.Null(UserScreensavers.FirstUser(() => null, () => throw new IOException()));
+    }
+
     [Theory]
     [InlineData("idle")]
     [InlineData("""{"type":"other"}""")]
