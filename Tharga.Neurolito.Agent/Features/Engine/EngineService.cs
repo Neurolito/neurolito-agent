@@ -492,7 +492,7 @@ internal class EngineService : IEngineService, IDisposable
                 Name = name,
                 Kind = _engine.Kind,
                 Models = models,
-                SupportsSelfTest = true,
+                SupportsSelfTest = _engine.SupportsSelfTest,
                 SupportsQueueSummary = _queueSummary != null,
                 AnthropicContextLength = _engine.AnthropicContextLength,
             };

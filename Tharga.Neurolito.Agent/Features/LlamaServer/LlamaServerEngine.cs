@@ -43,6 +43,8 @@ internal sealed class LlamaServerEngine : IEngine
 
     public int? AnthropicContextLength => _options.AnthropicContextLength > 0 ? _options.AnthropicContextLength : null;
 
+    public bool SupportsSelfTest => true;
+
     public Task<string> GetNameAsync(CancellationToken cancellationToken) => _host.GetVersionAsync(cancellationToken);
 
     public Task<string[]> GetModelNamesAsync(CancellationToken cancellationToken) => Task.FromResult(_store.List().Select(x => x.Name).ToArray());

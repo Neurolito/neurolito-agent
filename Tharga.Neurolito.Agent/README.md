@@ -91,6 +91,27 @@ downloads it. A model can also be named directly as `hf.co/{owner}/{repo}:{quant
 | `LlamaServer__ExtraArguments` | More arguments for `llama-server`, for example `--flash-attn on`. |
 | `LlamaServer__HuggingFaceToken` | For gated models. Optional. |
 
+### Anthropic's hosted models
+`Engine__Kind=Anthropic` makes the agent answer with [Anthropic's API](https://docs.claude.com/en/api/overview)
+instead of a local engine, so a team can offer models no machine of its own can run. Nothing runs or downloads on
+the machine, and the container does not start Ollama. **Every answer is billed to the owner of the API key.**
+
+- The models are the ones you list, each by its exact Anthropic id. A job reaches one only when it names it.
+- Each model is given the size its work units are counted at. Anthropic publishes no parameter counts, so the
+  size comes from the model's output price; the install guide gives the value for each model.
+- There is nothing to install or uninstall, and the agent asks for no self-tests, since each would be a billed call.
+- Anthropic-compatible requests (Claude Code) are forwarded to the API with the agent's key.
+
+| Setting | |
+|---|---|
+| `Anthropic__ApiKey` | The API key every call is billed to. Required. |
+| `Anthropic__Models__0__Name` | A model's id, for example `claude-sonnet-5-5`. Add `__1__`, `__2__` and so on for more. |
+| `Anthropic__Models__0__ParameterCount` | The size that model's work units are counted at, for example `50000000000`. |
+| `Anthropic__Models__0__SupportsThinking` | Whether a prompt that asks to think gets it. Default `true`. |
+| `Anthropic__MaxTokens` | The longest answer, when a prompt sets none (default `32000`). |
+| `Anthropic__Version` | The `anthropic-version` header (default `2023-06-01`). |
+| `Anthropic__Address` | The API. Default `https://api.anthropic.com`. |
+
 ### Desktop agent
 `Desktop__Enabled=true` (Windows) makes the agent share a machine with the person using it. The
 [Windows installer](https://github.com/Neurolito/neurolito-agent-windows) turns it on. The machine counts as free

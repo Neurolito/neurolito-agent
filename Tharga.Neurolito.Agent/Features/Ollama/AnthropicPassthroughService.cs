@@ -15,6 +15,7 @@ namespace Tharga.Neurolito.Agent.Features.Ollama;
 /// Ollama and llama-server both answer <c>/v1/messages</c> in Anthropic's own shape and streams Anthropic's own event
 /// sequence, so the body is never parsed in either direction. The one thing written into the request
 /// is the resolved model name, because the published id the caller used means nothing to the engine.
+/// The hosted Anthropic engine is that API itself; its target carries the key and version headers.
 /// </remarks>
 internal sealed class AnthropicPassthroughService : IAnthropicPassthroughService
 {
@@ -56,6 +57,7 @@ internal sealed class AnthropicPassthroughService : IAnthropicPassthroughService
             {
                 Content = new StringContent(Prepare(request, target.Model), Encoding.UTF8, "application/json")
             };
+            foreach (var (name, value) in target.Headers) message.Headers.TryAddWithoutValidation(name, value);
 
             using var response = await _httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellation.Token);
 

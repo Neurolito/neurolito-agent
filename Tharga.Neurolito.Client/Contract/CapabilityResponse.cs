@@ -65,7 +65,7 @@ public record Engine
     public required string Name { get; init; }
 
     /// <summary>
-    /// Which engine runs the models: <see cref="EngineKind.Ollama"/> or <see cref="EngineKind.LlamaServer"/>. Null from
+    /// Which engine runs the models: <see cref="EngineKind.Ollama"/>, <see cref="EngineKind.LlamaServer"/> or <see cref="EngineKind.Anthropic"/>. Null from
     /// older agents, which are all Ollama.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -100,4 +100,7 @@ public static class EngineKind
 {
     public const string Ollama = "ollama";
     public const string LlamaServer = "llama-server";
+
+    /// <summary>Anthropic's hosted API: no local models, nothing to install, and every call billed to the agent owner's key.</summary>
+    public const string Anthropic = "anthropic";
 }

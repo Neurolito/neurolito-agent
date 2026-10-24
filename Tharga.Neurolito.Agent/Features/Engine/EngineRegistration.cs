@@ -1,3 +1,4 @@
+using Tharga.Neurolito.Agent.Features.Anthropic;
 using Tharga.Neurolito.Agent.Features.LlamaServer;
 using Tharga.Neurolito.Agent.Features.Model;
 using Tharga.Neurolito.Agent.Features.Ollama;
@@ -7,14 +8,18 @@ namespace Tharga.Neurolito.Agent.Features.Engine;
 public static class EngineRegistration
 {
     /// <summary>
-    /// The engine named by <c>Engine:Kind</c> - <c>Ollama</c> (the default) or <c>LlamaServer</c> - and everything the
-    /// agent does with it.
+    /// The engine named by <c>Engine:Kind</c> - <c>Ollama</c> (the default), <c>LlamaServer</c> or <c>Anthropic</c> - and
+    /// everything the agent does with it.
     /// </summary>
     public static void AddEngine(this WebApplicationBuilder builder)
     {
         if (IsLlamaServer(builder.Configuration["Engine:Kind"]))
         {
             builder.AddLlamaServer();
+        }
+        else if (IsAnthropic(builder.Configuration["Engine:Kind"]))
+        {
+            builder.AddAnthropic();
         }
         else
         {
@@ -40,5 +45,10 @@ public static class EngineRegistration
     {
         return string.Equals(kind, "LlamaServer", StringComparison.OrdinalIgnoreCase)
                || string.Equals(kind, "llama-server", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsAnthropic(string kind)
+    {
+        return string.Equals(kind, "Anthropic", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -42,6 +42,9 @@ internal interface IEngine
 
     /// <summary>The context Anthropic requests get, or null when the engine's own default is left in place.</summary>
     int? AnthropicContextLength { get; }
+
+    /// <summary>Whether the server may send a self-test. False for a hosted engine, where every trial is a billed call.</summary>
+    bool SupportsSelfTest { get; }
 }
 
 /// <summary>What a prompt needs to know about a model: its size, for work units, and whether it can think.</summary>
@@ -81,13 +84,16 @@ internal record EngineUsage
 }
 
 /// <summary>Where an Anthropic request goes. Holds the engine's model in place until disposed.</summary>
-internal sealed class AnthropicTarget(Uri address, string model, IAsyncDisposable hold = null) : IAsyncDisposable
+internal sealed class AnthropicTarget(Uri address, string model, IAsyncDisposable hold = null, IReadOnlyDictionary<string, string> headers = null) : IAsyncDisposable
 {
     /// <summary>The engine's base address; the request is posted to <c>/v1/messages</c> on it.</summary>
     public Uri Address { get; } = address;
 
     /// <summary>The model name to write into the request.</summary>
     public string Model { get; } = model;
+
+    /// <summary>Headers the request is sent with, such as a hosted provider's key. Empty for a local engine.</summary>
+    public IReadOnlyDictionary<string, string> Headers { get; } = headers ?? new Dictionary<string, string>();
 
     public ValueTask DisposeAsync() => hold?.DisposeAsync() ?? ValueTask.CompletedTask;
 }

@@ -31,6 +31,8 @@ internal class OllamaEngine : IEngine
 
     public int? AnthropicContextLength => _options.AnthropicContextLength > 0 ? _options.AnthropicContextLength : null;
 
+    public bool SupportsSelfTest => true;
+
     public async Task<string> GetNameAsync(CancellationToken cancellationToken)
     {
         using var client = new OllamaApiClient(_options.Address);
