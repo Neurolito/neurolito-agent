@@ -21,7 +21,7 @@
     <PackageReference Include="Quilt4Net.Toolkit.Health" Version="1.0.25" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.3.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.3.1" />
     <PackageReference Include="Quilt4Net.Toolkit.Api" Version="1.0.25" />
     <PackageReference Include="OllamaSharp" Version="5.5.0" />
     <PackageReference Include="Tharga.Communication" Version="1.1.2" />
