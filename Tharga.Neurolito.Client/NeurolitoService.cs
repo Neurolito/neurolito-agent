@@ -133,6 +133,20 @@ internal class NeurolitoService : INeurolitoService
         return false;
     }
 
+    public async Task<GetReadyResponse> GetReadyAsync(string model, int? keepAliveMinutes = null, CancellationToken cancellationToken = default)
+    {
+        using var httpClient = _httpClientFactory.CreateClient(Constants.NeurolitoClient);
+        httpClient.DefaultRequestHeaders.Add("X-API-KEY", _options.ApiKey);
+
+        var query = $"model={Uri.EscapeDataString(model ?? string.Empty)}{(keepAliveMinutes.HasValue ? $"&keepAliveMinutes={keepAliveMinutes}" : "")}";
+        using var response = await httpClient.PostAsync($"Prompt/ready?{query}", null, cancellationToken);
+
+        //NOTE: A refusal comes with the same body as a success, saying why; only a failure without one throws.
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(content)) response.EnsureSuccessStatusCode();
+        return JsonSerializer.Deserialize<GetReadyResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    }
+
     public async Task<PromptStatusResponse> GetStatusAsync(Guid requestId, CancellationToken cancellationToken = default)
     {
         using var httpClient = _httpClientFactory.CreateClient(Constants.NeurolitoClient);
