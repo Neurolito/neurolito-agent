@@ -31,6 +31,12 @@ internal interface IEngine
 
     Task UninstallAsync(string model, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Loads an installed model into memory without generating anything, and keeps it there for
+    /// <paramref name="keepAliveMinutes"/> where the engine decides that per request. Returns how long the load took.
+    /// </summary>
+    Task<TimeSpan> LoadAsync(string model, int? keepAliveMinutes, CancellationToken cancellationToken);
+
     /// <summary>Generates an answer as it arrives. The last chunk carries <see cref="EngineChunk.Final"/>.</summary>
     IAsyncEnumerable<EngineChunk> ChatAsync(EngineChatRequest request, CancellationToken cancellationToken);
 

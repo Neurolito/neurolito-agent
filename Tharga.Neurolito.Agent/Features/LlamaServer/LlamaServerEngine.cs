@@ -150,6 +150,15 @@ internal sealed class LlamaServerEngine : IEngine
         _store.Remove(installed);
     }
 
+    public async Task<TimeSpan> LoadAsync(string model, int? keepAliveMinutes, CancellationToken cancellationToken)
+    {
+        //NOTE: Started as a prompt without options starts it, so the real request finds it running. It stays until it has
+        //been idle for IdleUnloadMinutes; llama-server has no per-request keep-alive.
+        var installed = Installed(model);
+        await using var lease = await _host.AcquireAsync(installed.Name, _store.PathOf(installed), ContextFor(installed, _options.ContextLength), cancellationToken);
+        return lease.LoadTime;
+    }
+
     public async IAsyncEnumerable<EngineChunk> ChatAsync(EngineChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var total = Stopwatch.StartNew();

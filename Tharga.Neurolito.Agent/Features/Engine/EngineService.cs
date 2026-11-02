@@ -30,6 +30,9 @@ public interface IEngineService
 
     Task<AgentPromptResponse> GetResponseAsync(RequestDto request, bool respondToServer, CancellationToken cancellationToken);
 
+    /// <summary>Loads a model into memory so a request expected soon does not wait for it. Generates nothing.</summary>
+    Task<LoadModelResponse> LoadModelAsync(string model, int? keepAliveMinutes, CancellationToken cancellationToken);
+
     Task<CapabilityResponse> BuildCapabilityAsync();
 }
 
@@ -197,6 +200,29 @@ internal class EngineService : IEngineService, IDisposable
         }
 
         _logger.LogInformation("Completed uninstallation of model '{model}'.", model);
+    }
+
+    public async Task<LoadModelResponse> LoadModelAsync(string model, int? keepAliveMinutes, CancellationToken cancellationToken)
+    {
+        string resolved = null;
+        try
+        {
+            resolved = await ResolveModelNameAsync(model, cancellationToken);
+            var loaded = await _engine.GetLoadedModelsAsync(cancellationToken);
+            var already = loaded.Any(x => string.Equals(x.Name, resolved, StringComparison.OrdinalIgnoreCase));
+
+            var duration = await _engine.LoadAsync(resolved, keepAliveMinutes, cancellationToken);
+            _logger.LogInformation("Loaded {model} on request{already} in {ms} ms.", resolved, already ? " (it was loaded already)" : "", (long)duration.TotalMilliseconds);
+
+            //NOTE: The server hears the model is loaded now rather than at the next check.
+            _loadedModels?.Poke();
+            return new LoadModelResponse { Model = resolved, Success = true, AlreadyLoaded = already, LoadDurationMs = duration.TotalMilliseconds };
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Could not load {model} on request.", resolved ?? model);
+            return new LoadModelResponse { Model = resolved ?? model, Success = false, Error = e.Message };
+        }
     }
 
     public async Task<AgentPromptResponse> GetResponseAsync(RequestDto request, bool respondToServer, CancellationToken cancellationToken)
@@ -493,6 +519,7 @@ internal class EngineService : IEngineService, IDisposable
                 Kind = _engine.Kind,
                 Models = models,
                 SupportsSelfTest = true,
+                SupportsLoad = true,
                 SupportsQueueSummary = _queueSummary != null,
                 AnthropicContextLength = _engine.AnthropicContextLength,
             };

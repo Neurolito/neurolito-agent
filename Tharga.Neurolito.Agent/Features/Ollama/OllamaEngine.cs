@@ -111,6 +111,27 @@ internal class OllamaEngine : IEngine
         await client.DeleteModelAsync(new DeleteModelRequest { Model = model }, cancellationToken);
     }
 
+    public async Task<TimeSpan> LoadAsync(string model, int? keepAliveMinutes, CancellationToken cancellationToken)
+    {
+        //NOTE: Ollama loads a model on a chat with no messages, and generates nothing. No options are sent, as a prompt
+        //without them sends none: a different context length would make the real request load it again.
+        var request = new ChatRequest
+        {
+            Model = model,
+            Messages = [],
+            Stream = false,
+            KeepAlive = keepAliveMinutes.HasValue ? $"{keepAliveMinutes}m" : null
+        };
+
+        using var client = LongRunning();
+        await foreach (var chunk in client.ChatAsync(request, cancellationToken))
+        {
+            if (chunk is ChatDoneResponseStream done) return TimeSpan.FromMilliseconds(done.LoadDuration / 1_000_000d);
+        }
+
+        return TimeSpan.Zero;
+    }
+
     public async IAsyncEnumerable<EngineChunk> ChatAsync(EngineChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var chatRequest = new ChatRequest
