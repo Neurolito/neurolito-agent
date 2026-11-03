@@ -80,6 +80,13 @@ public record Engine
     public bool SupportsSelfTest { get; init; }
 
     /// <summary>
+    /// Whether the agent takes <see cref="LoadModelRequest"/>, to load a model before a request for it arrives. Older
+    /// agents leave it false and are never sent one.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool SupportsLoad { get; init; }
+
+    /// <summary>
     /// Whether the agent wants <see cref="QueueSummaryMessage"/>: a desktop agent shows the counts on its screensaver.
     /// Older agents leave it false and are never sent one.
     /// </summary>

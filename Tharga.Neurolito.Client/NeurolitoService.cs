@@ -22,6 +22,9 @@ internal class NeurolitoService : INeurolitoService
 
     public async Task<EnqueueResponse> EnqueueAsync(Input input, Dictionary<string, string> tags = default, ResponseInstruction responseInstruction = default, CancellationToken cancellationToken = default)
     {
+        //NOTE: Fallback models exist on V2 only.
+        if (input?.FallbackModels is { Length: > 0 }) return await EnqueueAsync(input, null, tags, responseInstruction, cancellationToken);
+
         try
         {
             var model = input.Model; // ?? _options.DefaultModel;
@@ -70,7 +73,9 @@ internal class NeurolitoService : INeurolitoService
                 Messages = input,
                 Options = options,
                 Tags = tags,
-                ResponseInstruction = responseInstruction
+                ResponseInstruction = responseInstruction,
+                FallbackModels = input.FallbackModels,
+                FallbackAfterSeconds = input.FallbackAfter.HasValue ? (int)input.FallbackAfter.Value.TotalSeconds : null
             };
             using var response = await httpClient.PostAsJsonAsync("Queue/V2", queueRequest, cancellationToken);
             if (!response.IsSuccessStatusCode)
@@ -131,6 +136,20 @@ internal class NeurolitoService : INeurolitoService
 
         response.EnsureSuccessStatusCode();
         return false;
+    }
+
+    public async Task<GetReadyResponse> GetReadyAsync(string model, int? keepAliveMinutes = null, CancellationToken cancellationToken = default)
+    {
+        using var httpClient = _httpClientFactory.CreateClient(Constants.NeurolitoClient);
+        httpClient.DefaultRequestHeaders.Add("X-API-KEY", _options.ApiKey);
+
+        var query = $"model={Uri.EscapeDataString(model ?? string.Empty)}{(keepAliveMinutes.HasValue ? $"&keepAliveMinutes={keepAliveMinutes}" : "")}";
+        using var response = await httpClient.PostAsync($"Prompt/ready?{query}", null, cancellationToken);
+
+        //NOTE: A refusal comes with the same body as a success, saying why; only a failure without one throws.
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(content)) response.EnsureSuccessStatusCode();
+        return JsonSerializer.Deserialize<GetReadyResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
     }
 
     public async Task<PromptStatusResponse> GetStatusAsync(Guid requestId, CancellationToken cancellationToken = default)
