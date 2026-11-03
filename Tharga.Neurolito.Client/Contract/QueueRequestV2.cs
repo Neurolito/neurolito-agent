@@ -18,4 +18,17 @@ public record QueueRequestV2
     /// <see cref="AgentReach.Any"/> for this job alone, which is the point of having it per job.
     /// </remarks>
     public AgentReach? Reach { get; init; }
+
+    /// <summary>
+    /// Models to fall back on, in order of preference, when no machine takes <see cref="Model"/> in time. Each
+    /// is what <see cref="Model"/> can be - a model, a family, a pattern or an alias - or a hosted model by its exact
+    /// name, used only when the team has turned on hosted models.
+    /// </summary>
+    public string[] FallbackModels { get; init; }
+
+    /// <summary>
+    /// How long each entry has before the next may be used: the first fallback may take the job this long after it was
+    /// queued, the second twice as long, and so on. 0 lets any entry take it at once. Null is 30 seconds.
+    /// </summary>
+    public int? FallbackAfterSeconds { get; init; }
 }

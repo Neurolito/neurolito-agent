@@ -1,0 +1,67 @@
+name: Tharga.Neurolito.Client
+
+# Builds and packs the client on every push and pull request. A tag named client-v<version>
+# (for example client-v1.0.3) also publishes that version to nuget.org.
+on:
+  push:
+    branches: [main]
+    tags: ['client-v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Work out the version
+        id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/client-v* ]]; then
+            echo "value=${GITHUB_REF#refs/tags/client-v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=1.0.0-ci.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Build with the version and pack that output. Letting pack rebuild would stamp every
+      # assembly 1.0.0 whatever the package version, and the server reads the version from the
+      # assembly to tell which client a request came from.
+      - name: Build
+        run: dotnet build Tharga.Neurolito.Client/Tharga.Neurolito.Client.csproj -c Release -p:Version=${{ steps.version.outputs.value }}
+
+      - name: Pack
+        run: dotnet pack Tharga.Neurolito.Client/Tharga.Neurolito.Client.csproj -c Release --no-build -p:Version=${{ steps.version.outputs.value }} -o out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: out/*
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/client-v')
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nupkg
+          path: out
+
+      - name: Push to nuget.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -z "$NUGET_API_KEY" ]; then echo "The NUGET_API_KEY secret is not set."; exit 1; fi
+          dotnet nuget push "out/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate

@@ -8,6 +8,8 @@ public record Input
     private readonly Message[] _rows;
     private readonly string _model;
     private readonly string _prompt;
+    private readonly string[] _fallbackModels;
+    private readonly TimeSpan? _fallbackAfter;
 
     internal Input(string prompt, string model)
     {
@@ -15,13 +17,21 @@ public record Input
         _model = model;
     }
 
-    internal Input(IEnumerable<Message> rows, string model)
+    internal Input(IEnumerable<Message> rows, string model, string[] fallbackModels = null, TimeSpan? fallbackAfter = null)
     {
         _rows = rows.ToArray();
         _model = model;
+        _fallbackModels = fallbackModels;
+        _fallbackAfter = fallbackAfter;
     }
 
     public string Model => _model;
+
+    /// <summary>Models to fall back on, in order, when no machine takes <see cref="Model"/> in time.</summary>
+    public string[] FallbackModels => _fallbackModels;
+
+    /// <summary>How long each entry has before the next may be used. Null is the server's default, 30 seconds.</summary>
+    public TimeSpan? FallbackAfter => _fallbackAfter;
 
     public static implicit operator string(Input input)
     {
