@@ -22,6 +22,9 @@ internal class NeurolitoService : INeurolitoService
 
     public async Task<EnqueueResponse> EnqueueAsync(Input input, Dictionary<string, string> tags = default, ResponseInstruction responseInstruction = default, CancellationToken cancellationToken = default)
     {
+        //NOTE: Fallback models exist on V2 only.
+        if (input?.FallbackModels is { Length: > 0 }) return await EnqueueAsync(input, null, tags, responseInstruction, cancellationToken);
+
         try
         {
             var model = input.Model; // ?? _options.DefaultModel;
@@ -70,7 +73,9 @@ internal class NeurolitoService : INeurolitoService
                 Messages = input,
                 Options = options,
                 Tags = tags,
-                ResponseInstruction = responseInstruction
+                ResponseInstruction = responseInstruction,
+                FallbackModels = input.FallbackModels,
+                FallbackAfterSeconds = input.FallbackAfter.HasValue ? (int)input.FallbackAfter.Value.TotalSeconds : null
             };
             using var response = await httpClient.PostAsJsonAsync("Queue/V2", queueRequest, cancellationToken);
             if (!response.IsSuccessStatusCode)
