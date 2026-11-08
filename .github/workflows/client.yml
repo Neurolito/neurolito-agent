@@ -16,9 +16,9 @@ jobs:
   package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: |
             8.0.x
@@ -44,7 +44,7 @@ jobs:
       - name: Pack
         run: dotnet pack Tharga.Neurolito.Client/Tharga.Neurolito.Client.csproj -c Release --no-build -p:Version=${{ steps.version.outputs.value }} -o out
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nupkg
           path: out/*
@@ -54,7 +54,7 @@ jobs:
     needs: package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: nupkg
           path: out
