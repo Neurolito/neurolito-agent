@@ -23,7 +23,7 @@
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.3.1" />
     <PackageReference Include="Quilt4Net.Toolkit.Api" Version="1.0.30" />
-    <PackageReference Include="OllamaSharp" Version="5.5.0" />
+    <PackageReference Include="OllamaSharp" Version="5.5.2" />
     <PackageReference Include="Tharga.Communication" Version="1.1.5" />
     <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
