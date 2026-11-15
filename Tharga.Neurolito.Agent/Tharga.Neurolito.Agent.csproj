@@ -15,14 +15,14 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="3.2.0" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.14" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.15" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="11.0.0" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
-    <PackageReference Include="Quilt4Net.Toolkit.Health" Version="1.0.30" />
+    <PackageReference Include="Quilt4Net.Toolkit.Health" Version="1.0.32" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.3.1" />
-    <PackageReference Include="Quilt4Net.Toolkit.Api" Version="1.0.30" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="11.0.1" />
+    <PackageReference Include="Quilt4Net.Toolkit.Api" Version="1.0.32" />
     <PackageReference Include="OllamaSharp" Version="5.5.2" />
     <PackageReference Include="Tharga.Communication" Version="1.1.5" />
     <PackageReference Include="Velopack" Version="1.2.161" />
