@@ -380,6 +380,10 @@ internal class EngineService : IEngineService, IDisposable
 
             var engineRun = await SnapshotAsync(model, chatRequest.KeepAliveMinutes);
 
+            _logger.LogInformation("{run}", RunReport.Describe(model, final.OutputTokens, outputDurationMs, loadDurationMs, engineRun));
+            if (RunReport.PartialCpuWarning(model, engineRun) is { } cpu) _logger.LogWarning("{warning}", cpu);
+            if (Pace.Observe(model, tokensPerSecond, loadDurationMs) is { } drop) _logger.LogWarning("{warning}", drop);
+
             return new AgentPromptResponse
             {
                 Model = model,
@@ -473,6 +477,7 @@ internal class EngineService : IEngineService, IDisposable
         }
     }
 
+    private static readonly PaceWatch Pace = new();
     private static readonly TimeSpan SnapshotTimeout = TimeSpan.FromSeconds(2);
 
     private static decimal? CalculateWorkUnits(int tokens, long? modelParameterCount)
