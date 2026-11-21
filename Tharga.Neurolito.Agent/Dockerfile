@@ -1,7 +1,7 @@
 # ======================================================
 # 1. Build & publish the .NET app
 # ======================================================
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 ARG BUILD_CONFIGURATION=Release
 # Supplied by the pipeline as the build number (e.g. 0.0.47). Without it the assembly keeps the
 # SDK default and every container reports itself as 1.0.0.0, which makes a deployed agent
