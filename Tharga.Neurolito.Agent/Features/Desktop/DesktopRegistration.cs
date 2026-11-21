@@ -41,7 +41,13 @@ public static class DesktopRegistration
 
         var updates = builder.Configuration.GetSection(UpdateOptions.SectionName).Get<UpdateOptions>() ?? new UpdateOptions();
         builder.Services.AddSingleton(Options.Create(updates));
-        if (updates.Enabled) builder.Services.AddHostedService<AgentUpdater>();
+        if (updates.Enabled)
+        {
+            //NOTE: One instance for the timer and for the server's request to look now, so they share the rule and the "already updating" state.
+            builder.Services.AddSingleton<AgentUpdater>();
+            builder.Services.AddSingleton<IAgentUpdateService>(s => s.GetRequiredService<AgentUpdater>());
+            builder.Services.AddHostedService(s => s.GetRequiredService<AgentUpdater>());
+        }
     }
 
     /// <summary>
