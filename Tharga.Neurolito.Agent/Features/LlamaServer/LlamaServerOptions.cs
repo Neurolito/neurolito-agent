@@ -26,6 +26,13 @@ public record LlamaServerOptions
     public int? GpuLayers { get; set; }
 
     /// <summary>
+    /// The graphics device to use (<c>--device</c>): a name from <c>llama-server --list-devices</c> (<c>Vulkan0</c>) or a
+    /// part of its description (<c>RTX 5070</c>), which keeps working when the numbering changes. Unset leaves the choice
+    /// to llama-server, which may spread a model over every device, an integrated one included. The server can change it.
+    /// </summary>
+    public string Device { get; set; }
+
+    /// <summary>
     /// Requests llama-server runs at once (<c>--parallel</c>). One gives each request the whole context; more split it.
     /// </summary>
     public int Parallel { get; set; } = 1;

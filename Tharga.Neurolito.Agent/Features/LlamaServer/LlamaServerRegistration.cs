@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Tharga.Neurolito.Agent.Features.Diagnostics;
 using Tharga.Neurolito.Agent.Features.Engine;
 using Tharga.Neurolito.Agent.Features.Model;
 
@@ -12,7 +13,11 @@ public static class LlamaServerRegistration
         var o = builder.Configuration.GetSection("LlamaServer").Get<LlamaServerOptions>() ?? new LlamaServerOptions();
         options?.Invoke(o);
 
+        //NOTE: What the server set wins over the installer's settings, as with the desktop's.
+        EngineSettingsStore.ApplySaved(o, EngineSettingsStore.DefaultPath);
+
         builder.Services.AddSingleton(Options.Create(o));
+        builder.Services.AddSingleton<IEngineSettingsStore>(s => new EngineSettingsStore(o, s.GetRequiredService<LlamaServerHost>(), EngineSettingsStore.DefaultPath, s.GetRequiredService<ILogger<EngineSettingsStore>>()));
         builder.Services.AddSingleton(Options.Create(new ModelPreloadOptions { Models = o.Models ?? [] }));
         builder.Services.AddSingleton(new ModelStore(o.ResolvedModelsPath));
         builder.Services.AddSingleton<HuggingFaceClient>();
