@@ -87,6 +87,7 @@ downloads it. A model can also be named directly as `hf.co/{owner}/{repo}:{quant
 | `LlamaServer__ModelsPath` | Where models are kept. Default: `Neurolito/models` in the machine's application data folder. |
 | `LlamaServer__ContextLength` | The context a prompt gets when it asks for none (default `8192`), capped at what the model was trained for. |
 | `LlamaServer__IdleUnloadMinutes` | Unload a model after this long without a request (default `10`); `0` keeps it loaded. |
+| `LlamaServer__Device` | The graphics device to use: a name from `llama-server --list-devices` (`Vulkan0`) or a part of its description (`RTX 5070`). Unset leaves the choice to `llama-server`, which may spread a model over every device, an integrated one included. The server can change it (see *Diagnostics from the server*). |
 | `LlamaServer__GpuLayers` | Layers on the GPU. Unset by default: `llama-server` puts what fits in video memory there and the rest on the CPU. Setting it turns that off, so a model larger than video memory fails to load. |
 | `LlamaServer__ExtraArguments` | More arguments for `llama-server`, for example `--flash-attn on`. |
 | `LlamaServer__HuggingFaceToken` | For gated models. Optional. |
@@ -141,6 +142,25 @@ agent installed with [Velopack](https://velopack.io) update itself. Every few ho
 downloads it, stops taking work, lets the running job and any model install finish (`Updates__DrainMinutes`, default
 120, and `Updates__InstallWaitMinutes`, default 360, are the longest it waits), applies the update and exits, so that the service
 manager starts it again on the new version. An agent not installed that way never updates itself.
+
+### Diagnostics from the server
+The server can ask the agent what it sees on its machine, so a slow machine can be looked into without anyone sitting
+at it. The agent runs one **probe from a fixed list**, never a command, and masks anything that looks like a key,
+token, password or authorization value before the answer leaves the machine:
+
+| Probe | What it returns |
+|---|---|
+| `Log` | The newest lines of the agent's log file (at most `Diagnostics__MaxLogLines`, default 200, and `Diagnostics__MaxLogBytes`, default 64 KB). `Diagnostics__LogDirectory` names the folder; unset, the agent looks where its logging writes and in the installers' folders. |
+| `Devices` | The devices `llama-server --list-devices` lists, and the device the agent is set to use. |
+| `Gpu` | `nvidia-smi`'s view of the cards: name, driver, memory in use, load. Unavailable without `nvidia-smi`. |
+| `Engine` | The engine's settings in effect, how `llama-server` was last started, its last output (which says how many layers went to the GPU), and what is loaded. |
+| `Version` | The agent's version, the engine's version and the operating system. |
+
+The server can also change two engine settings, and nothing else: `LlamaServer__Device` and `LlamaServer__GpuLayers`
+(`-1` goes back to `llama-server`'s own fitting). The agent refuses a device `llama-server` does not list, keeps the
+change in `engine.json` in its data folder, which wins over the installer's settings at the next start, and unloads the
+loaded model so the next job loads it with the new settings. Free-form `llama-server` arguments cannot be set this way.
+An agent from before this existed does not answer, and is updated first.
 
 ## Building Chocolatey package
 In the `Tharga.Neurolito.Agent` folder run...
