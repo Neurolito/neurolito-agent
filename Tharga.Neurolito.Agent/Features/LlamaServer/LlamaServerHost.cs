@@ -14,7 +14,7 @@ namespace Tharga.Neurolito.Agent.Features.LlamaServer;
 /// swap waits until no lease is held, so a model is never pulled out from under an answer. With nothing to do for
 /// <see cref="LlamaServerOptions.IdleUnloadMinutes"/> the process is stopped and its memory given back.
 /// </remarks>
-internal sealed class LlamaServerHost : IHostedService, IAsyncDisposable
+internal sealed class LlamaServerHost : IHostedService, IAsyncDisposable, IEngineControl
 {
     public const string ClientName = "LlamaServer";
     private static readonly TimeSpan IdleCheck = TimeSpan.FromSeconds(15);
@@ -34,6 +34,7 @@ internal sealed class LlamaServerHost : IHostedService, IAsyncDisposable
     private int _leases;
     private DateTime _lastUsed = DateTime.UtcNow;
     private string _version;
+    private string _lastStart;
     private Task _idleLoop;
 
     public LlamaServerHost(IOptions<LlamaServerOptions> options, IHttpClientFactory httpClientFactory, ILogger<LlamaServerHost> logger)
@@ -161,11 +162,14 @@ internal sealed class LlamaServerHost : IHostedService, IAsyncDisposable
             CreateNoWindow = true,
             WorkingDirectory = Path.GetDirectoryName(executable)!
         };
-        foreach (var argument in Arguments(_options, name, path, contextLength, port))
+        var device = await ResolveDeviceAsync(cancellationToken);
+        var arguments = Arguments(_options, name, path, contextLength, port, device).ToArray();
+        foreach (var argument in arguments)
         {
             start.ArgumentList.Add(argument);
         }
 
+        _lastStart = $"{Path.GetFileName(executable)} {string.Join(' ', arguments)}";
         lock (_output) _output.Clear();
         var process = new Process { StartInfo = start, EnableRaisingEvents = true };
         process.OutputDataReceived += (_, e) => Remember(e.Data);
@@ -218,9 +222,11 @@ internal sealed class LlamaServerHost : IHostedService, IAsyncDisposable
     }
 
     /// <summary>The command line llama-server is started with.</summary>
-    internal static IEnumerable<string> Arguments(LlamaServerOptions options, string name, string path, int contextLength, int port)
+    internal static IEnumerable<string> Arguments(LlamaServerOptions options, string name, string path, int contextLength, int port, string device = null)
     {
         string[] arguments = ["-m", path, "--alias", name, "--jinja"];
+
+        if (!string.IsNullOrWhiteSpace(device)) arguments = [.. arguments, "--device", device];
 
         //NOTE: Passed only when set. llama-server's --fit adjusts the arguments it was not given, so an -ngl of its own
         //turns that off: -ngl 999 put all of qwen3-coder:30b (19 GB) on a 12 GB RTX 5070, and it failed to load.
@@ -260,6 +266,52 @@ internal sealed class LlamaServerHost : IHostedService, IAsyncDisposable
         {
             process.Dispose();
         }
+    }
+
+    /// <summary>How llama-server was last started, or null if it has not been.</summary>
+    public string LastStart => _lastStart;
+
+    /// <summary>What llama-server last printed, oldest first: the device it chose, the layers it offloaded, why it failed.</summary>
+    public string[] RecentOutput()
+    {
+        lock (_output) return _output.ToArray();
+    }
+
+    /// <summary>The raw output of <c>llama-server --list-devices</c>, or null when the program is missing or does not run.</summary>
+    public async Task<string> ListDevicesAsync(CancellationToken cancellationToken)
+    {
+        var path = _options.ResolvedExecutablePath;
+        if (!File.Exists(path)) return null;
+
+        try
+        {
+            var start = new ProcessStartInfo(path, "--list-devices")
+            {
+                RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true,
+                WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(path))!
+            };
+            using var process = Process.Start(start)!;
+            var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var error = process.StandardError.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
+            return await error + await output;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _logger.LogWarning(e, "Could not list the devices with {Path}.", path);
+            return null;
+        }
+    }
+
+    private async Task<string> ResolveDeviceAsync(CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_options.Device)) return null;
+
+        var listed = DeviceList.Parse(await ListDevicesAsync(cancellationToken));
+        var device = DeviceList.Resolve(_options.Device, listed);
+        if (device == null) _logger.LogWarning("The device '{Device}' is not one llama-server lists ({Listed}); llama-server chooses.", _options.Device, string.Join(", ", listed.Select(x => x.Name)));
+        else _logger.LogInformation("Using the device {Device} ({Setting}).", device, _options.Device);
+        return device;
     }
 
     private void Remember(string line)

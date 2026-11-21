@@ -9,6 +9,7 @@ using Serilog;
 using Tharga.Communication.Client;
 using Tharga.Neurolito.Agent.Features.ConsoleLog;
 using Tharga.Neurolito.Agent.Features.Desktop;
+using Tharga.Neurolito.Agent.Features.Diagnostics;
 using Tharga.Neurolito.Agent.Features.Greeting;
 using Tharga.Neurolito.Agent.Features.Engine;
 using Tharga.Neurolito.Agent.Framework;
@@ -56,6 +57,7 @@ if (!string.IsNullOrWhiteSpace(aiConnectionString))
 
 builder.AddEngine();
 builder.AddDesktop();
+builder.AddDiagnostics();
 
 builder.AddQuilt4NetHealth(o =>
 {
