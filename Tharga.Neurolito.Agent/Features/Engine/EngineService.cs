@@ -270,7 +270,7 @@ internal class EngineService : IEngineService, IDisposable
                 Messages = request.Messages,
                 Options = request.Options,
                 Think = info.SupportsThinking,
-                KeepAliveMinutes = request.TimeoutMinutes
+                KeepAliveMinutes = KeepAlive.Choose(request.TimeoutMinutes, request.KeepAliveMinutes)
             };
 
             EngineUsage final = null;
@@ -378,6 +378,12 @@ internal class EngineService : IEngineService, IDisposable
                 });
             }
 
+            var engineRun = await SnapshotAsync(model, chatRequest.KeepAliveMinutes);
+
+            _logger.LogInformation("{run}", RunReport.Describe(model, final.OutputTokens, outputDurationMs, loadDurationMs, engineRun));
+            if (RunReport.PartialCpuWarning(model, engineRun) is { } cpu) _logger.LogWarning("{warning}", cpu);
+            if (Pace.Observe(model, tokensPerSecond, loadDurationMs) is { } drop) _logger.LogWarning("{warning}", drop);
+
             return new AgentPromptResponse
             {
                 Model = model,
@@ -393,6 +399,7 @@ internal class EngineService : IEngineService, IDisposable
                     TotalDurationMs = totalDurationMs,
                     WorkUnits = workUnits,
                     Throughput = throughput,
+                    EngineRun = engineRun
                 },
                 ResponseInstruction = request.ResponseInstruction
             };
@@ -443,6 +450,35 @@ internal class EngineService : IEngineService, IDisposable
             if (started) _activity?.JobEnded(AgentActivity.WordsIn(output.ToString()), sw.Elapsed.TotalMilliseconds, (double?)wu);
         }
     }
+
+    /// <summary>Asks the engine how the model sits in memory now. Never fails the answer: null when the engine cannot say in time.</summary>
+    private async Task<EngineRun> SnapshotAsync(string model, int? keepAliveMinutes)
+    {
+        try
+        {
+            using var timeout = new CancellationTokenSource(SnapshotTimeout);
+            var name = await _engine.GetNameAsync(timeout.Token);
+            var loaded = (await _engine.GetLoadedModelsAsync(timeout.Token)).FirstOrDefault(x => string.Equals(x.Name, model, StringComparison.OrdinalIgnoreCase));
+
+            return new EngineRun
+            {
+                Engine = name,
+                SizeBytes = loaded?.SizeBytes,
+                VramBytes = loaded?.VramBytes,
+                ContextLength = loaded?.ContextLength,
+                ExpiresUtc = loaded?.ExpiresUtc,
+                KeepAliveMinutes = keepAliveMinutes
+            };
+        }
+        catch (Exception e)
+        {
+            _logger.LogDebug(e, "Could not read how the engine holds {model}; the answer goes without it.", model);
+            return null;
+        }
+    }
+
+    private static readonly PaceWatch Pace = new();
+    private static readonly TimeSpan SnapshotTimeout = TimeSpan.FromSeconds(2);
 
     private static decimal? CalculateWorkUnits(int tokens, long? modelParameterCount)
     {

@@ -91,6 +91,17 @@ downloads it. A model can also be named directly as `hf.co/{owner}/{repo}:{quant
 | `LlamaServer__ExtraArguments` | More arguments for `llama-server`, for example `--flash-attn on`. |
 | `LlamaServer__HuggingFaceToken` | For gated models. Optional. |
 
+### What the agent logs and how long it keeps a model
+
+After each answer the agent asks the engine how the model sits in memory (the information `ollama ps` shows) and
+logs one line: the model, tokens, tokens per second, load time, the share in video memory, the engine and its version
+and the keep-alive. It sends the same facts to the server, which shows them with the run. It warns when part of the
+model runs on the CPU (expected when the model is larger than the video memory) and when a warm run falls under half
+that model's best speed since the agent started.
+
+How long the engine keeps a model loaded after a run is the larger of the request's time limit and the keep-alive the
+server sets for this machine. With none set, it is the request's time limit.
+
 ### Desktop agent
 `Desktop__Enabled=true` (Windows) makes the agent share a machine with the person using it. The
 [Windows installer](https://github.com/Neurolito/neurolito-agent-windows) turns it on. The machine counts as free

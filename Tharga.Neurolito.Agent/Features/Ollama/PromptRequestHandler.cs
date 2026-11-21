@@ -24,7 +24,8 @@ internal class PromptRequestHandler : SendMessageHandlerBase<PromptRequest, Agen
             Tags = message.Tags,
             ResponseInstruction = message.ResponseInstruction,
             Options = message.Options,
-            TimeoutMinutes = message.TimeoutMinutes
+            TimeoutMinutes = message.TimeoutMinutes,
+            KeepAliveMinutes = message.KeepAliveMinutes
         };
 
         return await _engineService.GetResponseAsync(request, true, CancellationToken.None);

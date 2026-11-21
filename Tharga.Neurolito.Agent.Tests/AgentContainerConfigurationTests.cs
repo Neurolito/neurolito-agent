@@ -43,10 +43,10 @@ public class AgentContainerConfigurationTests
     }
 
     [Fact]
-    public void TheLibraryAloneDropsAConfiguredKey()
+    public void TheLibraryAloneNowBindsAConfiguredKey()
     {
-        // Pins the upstream behaviour AgentConnection exists for. When this starts failing, the library
-        // binds ApiKey itself and the workaround can go.
+        // Tharga.Communication 1.1.5 and later bind ApiKey themselves; up to 1.1.2 it dropped it, which AgentConnection
+        // exists for. The workaround stays until every agent in the field runs a version that binds it.
         var builder = Host.CreateApplicationBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -56,7 +56,7 @@ public class AgentContainerConfigurationTests
 
         using var provider = builder.Services.BuildServiceProvider();
 
-        Assert.Null(provider.GetRequiredService<IOptions<ClientOptions>>().Value.ApiKey);
+        Assert.Equal("team-key-from-file", provider.GetRequiredService<IOptions<ClientOptions>>().Value.ApiKey);
     }
 
     [Fact]

@@ -9,4 +9,8 @@ public record PromptRequest
     public ResponseInstruction ResponseInstruction { get; init; }
     public Options Options { get; init; }
     public int? TimeoutMinutes { get; init; }
+
+    /// <summary>How long the server wants the engine to keep the model loaded after the run, from the agent's setting. Null leaves it to the timeout.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? KeepAliveMinutes { get; init; }
 }
