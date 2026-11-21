@@ -7,6 +7,16 @@ updates:
     groups:
       nuget:
         patterns: ["*"]
+    # The agent runs on .NET 10 until spring 2027; the .NET 11 packages and Swashbuckle 11 do not build with it.
+    ignore:
+      - dependency-name: "Microsoft.Extensions.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.AspNetCore.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.SourceLink.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Swashbuckle.AspNetCore*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -18,3 +28,6 @@ updates:
     directory: /Tharga.Neurolito.Agent
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "mcr.microsoft.com/dotnet/*"
+        update-types: ["version-update:semver-major"]
