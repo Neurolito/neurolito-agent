@@ -26,7 +26,7 @@ internal static class RunReport
     /// <summary>A warning when part of the model runs on the CPU, which is the usual reason a good graphics card is slow. Null otherwise.</summary>
     public static string PartialCpuWarning(string model, EngineRun run) =>
         run?.VramShare is { } share and < 1m
-            ? $"'{model}' runs partly on the CPU, only {Math.Round(share * 100, 0)}% is in video memory. Expect it to be slow; free video memory or use a smaller model."
+            ? $"'{model}' runs partly on the CPU, only {Math.Round(share * 100, 0)}% is in video memory. That is expected when the model is larger than the video memory (or the context is large), and it is still faster than all on the CPU; it is slower than fully on the GPU."
             : null;
 
     internal static string Format(decimal value) => value.ToString("0.0", CultureInfo.InvariantCulture);

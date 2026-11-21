@@ -270,7 +270,7 @@ internal class EngineService : IEngineService, IDisposable
                 Messages = request.Messages,
                 Options = request.Options,
                 Think = info.SupportsThinking,
-                KeepAliveMinutes = request.TimeoutMinutes
+                KeepAliveMinutes = KeepAlive.Choose(request.TimeoutMinutes, request.KeepAliveMinutes)
             };
 
             EngineUsage final = null;

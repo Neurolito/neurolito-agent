@@ -18,7 +18,7 @@ namespace Tharga.Neurolito.Agent.Tests;
 /// </summary>
 public class EngineRunSnapshotTests
 {
-    private const string Model = "llama3.1:8b-instruct-q4_K_M";
+    internal const string Model = "llama3.1:8b-instruct-q4_K_M";
 
     [Fact]
     public async Task AnAnswerCarriesWhatTheEngineWasDoingWithTheModel()
@@ -106,13 +106,13 @@ public class EngineRunSnapshotTests
         return service.GetResponseAsync(request, respondToServer: false, CancellationToken.None);
     }
 
-    private sealed class FakeEvents : IEventService
+    internal sealed class FakeEvents : IEventService
     {
         public event EventHandler<EventArgs> CancelEvent;
         public void OnCancel() => CancelEvent?.Invoke(this, EventArgs.Empty);
     }
 
-    private sealed class FakeEngine : IEngine
+    internal sealed class FakeEngine : IEngine
     {
         public string Name { get; init; } = "Fake 1.0";
         public LoadedModel[] Loaded { get; init; } = [];

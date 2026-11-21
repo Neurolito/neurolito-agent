@@ -11,4 +11,7 @@ public record RequestDto
     public ResponseInstruction ResponseInstruction { get; init; }
     public Options Options { get; init; }
     public int? TimeoutMinutes { get; init; }
+
+    /// <summary>The server's keep-alive for this agent; the engine keeps the model for the larger of it and the timeout.</summary>
+    public int? KeepAliveMinutes { get; init; }
 }
