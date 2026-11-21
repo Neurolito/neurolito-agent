@@ -22,4 +22,8 @@ public record Usage
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string Exception { get; init; }
+
+    /// <summary>What the engine was doing for this run. Null from an agent that does not report it.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public EngineRun EngineRun { get; init; }
 }
